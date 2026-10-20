@@ -51,7 +51,7 @@ async def clerk_webhook(
         email = email_addresses[0].get("email_address") if email_addresses else f"{clerk_id}@sbuniversity.edu"
         first_name = data.get("first_name") or ""
         last_name = data.get("last_name") or ""
-        full_name = f"{first_name} {last_name}".strip() or "SBUniversity Student"
+        full_name = f"{first_name} {last_name}".strip() or "SiliconBrains University Student"
         avatar_url = data.get("image_url")
         role_str = data.get("public_metadata", {}).get("role", "student")
 

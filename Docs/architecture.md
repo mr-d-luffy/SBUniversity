@@ -1,4 +1,4 @@
-# architecture.md — SBUniversity System Architecture
+# architecture.md — SiliconBrains University System Architecture
 
 > Defines HOW the system is structured. Update this file whenever architecture changes.
 

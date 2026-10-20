@@ -1,7 +1,7 @@
 import { PageHeader } from "@/components/ui/Card";
 import { RankBoard } from "@/components/features/RankBoard";
 
-export const metadata = { title: "Live Ranking – SBUniversity" };
+export const metadata = { title: "Live Ranking" };
 
 export default async function RankingPage() {
   return (

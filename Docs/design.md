@@ -1,4 +1,4 @@
-# design.md — SBUniversity Design System
+# design.md — SiliconBrains University Design System
 
 > v0.2 — Palette updated to **Bordo · Green · Cream** with the **60 : 30 : 10** rule. Source palette: BORDO `#6C151E`, GREEN `#0F3D3A`, CREAM `#F5DABF`. White is added only as a neutral surface.
 

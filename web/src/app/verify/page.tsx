@@ -25,7 +25,7 @@ export default function VerifyIndexPage() {
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-green-700 text-cream-200">
               <GraduationCap size={20} />
             </span>
-            <span className="font-heading text-lg font-bold text-green-700">SBUniversity</span>
+            <span className="font-heading text-lg font-bold text-green-700">SiliconBrains University</span>
           </Link>
           <Button href="/" variant="secondary" size="sm" className="max-w-full">
             <ArrowLeft size={14} /> Back to University
@@ -42,7 +42,7 @@ export default function VerifyIndexPage() {
             Verify a Certificate or Student ID
           </h1>
           <p className="mt-2 text-sm text-ink-muted">
-            Enter the unique verification code printed on the official SBUniversity credential or scanned from the QR code.
+            Enter the verification code printed on a SiliconBrains University credential or scanned from its QR code.
           </p>
         </div>
 

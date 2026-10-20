@@ -116,7 +116,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.APP_NAME,
-    description="Full Production Ready Backend for SBUniversity",
+    description="Full Production Ready Backend for SiliconBrains University",
     version="1.0.0",
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url="/redoc" if settings.DEBUG else None,

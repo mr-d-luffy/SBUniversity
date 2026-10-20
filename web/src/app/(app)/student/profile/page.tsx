@@ -104,7 +104,7 @@ export default function StudentProfilePage() {
         api<MeApiResponse>("/me", token ?? undefined).catch(() => null),
       ]);
 
-      const name = idCardRes?.name || meRes?.full_name || user?.fullName || "SBUniversity Student";
+      const name = idCardRes?.name || meRes?.full_name || user?.fullName || "SiliconBrains University Student";
       const studentCode = idCardRes?.student_code || meRes?.student_profile?.student_code || "SBU-2026-0001";
       const department = idCardRes?.department || meRes?.student_profile?.department?.name || "Computer Science & Engineering";
       const batchYear = idCardRes?.batch_year || meRes?.student_profile?.batch_year || 2026;

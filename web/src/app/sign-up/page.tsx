@@ -15,17 +15,17 @@ export default function SignUpPage() {
           <span className="grid h-9 w-9 place-items-center rounded-lg bg-cream-200 text-green-900">
             <GraduationCap size={20} aria-hidden />
           </span>
-          SBUniversity
+          SiliconBrains University
         </Link>
         <div>
           <h2 className="max-w-md font-heading text-3xl font-bold leading-snug !text-cream-50">
-            Join the SBUniversity Academic Platform.
+            Join the SiliconBrains University learning platform.
           </h2>
           <p className="mt-3 max-w-md text-cream-200">
             Create your account to take course examinations, earn Task Points, and collect verifiable credentials.
           </p>
         </div>
-        <p className="text-sm text-cream-200">© 2026 SBUniversity</p>
+        <p className="text-sm text-cream-200">© 2026 SiliconBrains University</p>
       </aside>
 
       <main className="flex min-w-0 items-center justify-center px-4 py-8 sm:py-12">
@@ -34,7 +34,7 @@ export default function SignUpPage() {
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-green-700 text-cream-200">
               <GraduationCap size={19} aria-hidden />
             </span>
-            SBUniversity
+            SiliconBrains University
           </Link>
           <div className="flex flex-col items-stretch gap-3 border-b border-cream-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">

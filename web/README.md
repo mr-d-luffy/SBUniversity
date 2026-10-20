@@ -1,4 +1,4 @@
-# SBUniversity Web
+# SiliconBrains University Web
 
 Next.js 15 (App Router, TypeScript strict) + Tailwind CSS 3. Light theme, Bordo/Green/Cream palette (60:30:10) from `design.md`.
 

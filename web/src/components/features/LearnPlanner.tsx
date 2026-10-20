@@ -395,7 +395,7 @@ export function LearnPlanner({ role }: { role: Role }) {
             <CalendarDays size={21} />
           </div>
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#9dd8c8]">SBUniversity</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#9dd8c8]">SiliconBrains University</p>
             <h1 className="font-heading text-xl font-bold sm:text-2xl">SB Learn Planner</h1>
           </div>
         </div>

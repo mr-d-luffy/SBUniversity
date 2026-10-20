@@ -11,7 +11,7 @@ from app.repositories.chat_repository import ChatRepository
 from app.repositories.exam_repository import ExamRepository
 from app.services.ranking_service import RankingService
 
-SYSTEM_PROMPT_TEMPLATE = """You are Aarsh Intelligence, the official academic AI assistant of SBUniversity.
+SYSTEM_PROMPT_TEMPLATE = """You are Aarsh Intelligence, the academic AI assistant of SiliconBrains University.
 You are professional, encouraging, knowledgeable, and helpful to university students, teachers, and staff.
 
 Guidelines:
@@ -115,7 +115,7 @@ class AIService:
         else:
             # Informative academic fallback response
             fallback_msg = (
-                f"Hello {user.full_name}! I am Aarsh Intelligence, your academic study assistant at SBUniversity. "
+                f"Hello {user.full_name}! I am Aarsh Intelligence, your academic study assistant at SiliconBrains University. "
                 f"You currently have {rank_info.points} Task Points. How can I assist with your studies or exam preparation today?"
             )
             for word in fallback_msg.split(" "):

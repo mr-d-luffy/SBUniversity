@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     )
 
     # Application
-    APP_NAME: str = "SBUniversity API"
+    APP_NAME: str = "SiliconBrains University API"
     APP_ENV: str = "development"
     DEBUG: bool = True
     PORT: int = 8000

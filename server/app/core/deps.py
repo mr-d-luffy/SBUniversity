@@ -105,7 +105,7 @@ async def get_current_user(
     if not user:
         # Check if we should auto-provision a basic student record or if in dev mode
         email = payload.get("email") or payload.get("email_address") or f"{clerk_user_id}@sbuniversity.edu"
-        name = payload.get("name") or payload.get("full_name") or "SBUniversity User"
+        name = payload.get("name") or payload.get("full_name") or "SiliconBrains University User"
         role_claim = payload.get("role") or payload.get("public_metadata", {}).get("role")
 
         # If role is not in the JWT token, fetch directly from Clerk Backend API

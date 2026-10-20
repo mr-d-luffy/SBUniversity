@@ -1,6 +1,6 @@
-# SBUniversity Backend (FastAPI + Supabase + Redis)
+# SiliconBrains University Backend (FastAPI + Supabase + Redis)
 
-Backend API for the **SBUniversity** platform.
+Backend API for the **SiliconBrains University** platform.
 
 ---
 
@@ -135,7 +135,7 @@ This populates:
 
 ### 4. Running the Server
 
-From the repository root, start the local SBUniversity API on port `8010`:
+From the repository root, start the local SiliconBrains University API on port `8010`:
 ```bash
 ./scripts/run-local-backend.sh
 ```

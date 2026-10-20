@@ -76,7 +76,7 @@ export function AarshFloatingWidget({ userRole, userName }: { userRole: string; 
         } else if (query.toLowerCase().includes("exam") || query.toLowerCase().includes("test")) {
           reply = "Exams feature server-authoritative timers. Answers autosave per question so you won't lose work even if your network disconnects. Remember: anti-cheat guardrails block live exam question lookups during active attempts!";
         } else {
-          reply = `That's a great question regarding ${query}. As Aarsh Intelligence, I'm here to support your studies at SBUniversity. You can also view the full AI study workspace on the dedicated **Aarsh AI** page.`;
+          reply = `That's a great question regarding ${query}. As Aarsh Intelligence, I'm here to support your studies at SiliconBrains University. You can also view the full AI study workspace on the dedicated **Aarsh AI** page.`;
         }
       }
 

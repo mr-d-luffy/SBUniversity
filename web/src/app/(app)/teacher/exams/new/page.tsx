@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Plus, Trash2, CheckCircle2, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, CheckCircle2, Loader2, Upload } from "lucide-react";
 import { PageHeader, Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
@@ -34,6 +34,79 @@ function toLocalDateTimeInput(date: Date): string {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
     .toISOString()
     .slice(0, 16);
+}
+
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+  const source = text.replace(/^\uFEFF/, "");
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '"' && quoted && source[index + 1] === '"') {
+      cell += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      row.push(cell.trim());
+      cell = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && source[index + 1] === "\n") index += 1;
+      row.push(cell.trim());
+      if (row.some((value) => value.length > 0)) rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+  if (quoted) throw new Error("The CSV has an unclosed quoted field.");
+  row.push(cell.trim());
+  if (row.some((value) => value.length > 0)) rows.push(row);
+  return rows;
+}
+
+function questionsFromCsv(text: string): QuestionDraft[] {
+  const rows = parseCsv(text);
+  if (rows.length < 2) throw new Error("Add a header row and at least one question row.");
+  const headers = rows[0].map((header) => header.trim().toLowerCase().replace(/\s+/g, "_"));
+  const column = (name: string) => headers.indexOf(name);
+  const questionColumn = column("question");
+  const correctColumn = column("correct_answer");
+  const optionColumns = ["option_a", "option_b", "option_c", "option_d"].map(column);
+  if (questionColumn < 0 || correctColumn < 0 || optionColumns.slice(0, 2).some((index) => index < 0)) {
+    throw new Error("CSV headers must include question, option_a, option_b, correct_answer; option_c, option_d, marks and explanation are optional.");
+  }
+
+  return rows.slice(1).map((values, rowIndex) => {
+    const field = (index: number) => index < 0 ? "" : (values[index] ?? "").trim();
+    const question = field(questionColumn);
+    const options = optionColumns.map((index) => field(index)).filter(Boolean);
+    const answer = field(correctColumn);
+    if (!question || options.length < 2 || !answer) {
+      throw new Error(`Row ${rowIndex + 2} needs a question, at least two options, and a correct_answer.`);
+    }
+    const answerIndex = /^[1-4]$/.test(answer)
+      ? Number(answer) - 1
+      : /^[a-d]$/i.test(answer)
+        ? answer.toUpperCase().charCodeAt(0) - 65
+        : options.findIndex((option) => option.toLowerCase() === answer.toLowerCase());
+    if (answerIndex < 0 || answerIndex >= options.length) {
+      throw new Error(`Row ${rowIndex + 2} correct_answer must be A–D, 1–4, or match an option exactly.`);
+    }
+    const marks = field(column("marks")) || "5";
+    if (!Number.isFinite(Number(marks)) || Number(marks) <= 0) {
+      throw new Error(`Row ${rowIndex + 2} marks must be a positive number.`);
+    }
+    return {
+      text: question,
+      marks: Number(marks),
+      explanation: field(column("explanation")),
+      options: options.map((option, index) => ({ text: option, isCorrect: index === answerIndex })),
+    };
+  });
 }
 
 export default function NewExamPage() {
@@ -115,6 +188,23 @@ export default function NewExamPage() {
         ],
       },
     ]);
+  };
+
+  const importQuestions = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const imported = questionsFromCsv(await file.text());
+      setQuestions((current) => {
+        const hasOnlyBlankStarter = current.length === 1 && !current[0].text.trim() && current[0].options.every((option) => !option.text.trim());
+        return hasOnlyBlankStarter ? imported : [...current, ...imported];
+      });
+      toast(`Imported ${imported.length} question${imported.length === 1 ? "" : "s"}.`);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not import this CSV file.");
+    } finally {
+      event.target.value = "";
+    }
   };
 
   const removeQuestion = (index: number) => {
@@ -412,10 +502,19 @@ export default function NewExamPage() {
                 </h3>
                 <p className="text-xs text-ink-muted">Single choice MCQ with automated evaluation</p>
               </div>
-              <Button type="button" variant="secondary" size="sm" className="min-h-11" onClick={addQuestion}>
-                <Plus size={15} /> Add Question
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <label className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-cream-300 bg-white px-3 text-sm font-semibold text-green-900 transition-colors hover:bg-cream-100">
+                  <Upload size={15} /> Import CSV
+                  <input type="file" accept=".csv,text/csv" onChange={(event) => void importQuestions(event)} className="sr-only" aria-label="Import questions from CSV" />
+                </label>
+                <Button type="button" variant="secondary" size="sm" className="min-h-11" onClick={addQuestion}>
+                  <Plus size={15} /> Add Question
+                </Button>
+              </div>
             </div>
+            <p className="text-xs text-ink-muted">
+              CSV columns: <code>question, option_a, option_b, option_c, option_d, correct_answer, marks, explanation</code>. Correct answer can be A–D, 1–4, or the exact option text. <a className="font-semibold text-green-800 underline" download="sb-university-question-template.csv" href={`data:text/csv;charset=utf-8,${encodeURIComponent('question,option_a,option_b,option_c,option_d,correct_answer,marks,explanation\n"What is 2 + 2?","3","4","5","6",B,5,"Basic addition"')}`}>Download template</a>.
+            </p>
 
             {questions.map((q, qIndex) => (
               <Card key={qIndex} className="min-w-0 space-y-4 border-l-4 border-l-green-700 p-4 sm:p-5">

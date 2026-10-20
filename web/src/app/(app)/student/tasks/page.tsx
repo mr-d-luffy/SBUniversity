@@ -1,7 +1,7 @@
 import { PageHeader } from "@/components/ui/Card";
 import { TaskList } from "@/components/features/TaskList";
 
-export const metadata = { title: "My Tasks – SBUniversity" };
+export const metadata = { title: "My Tasks" };
 
 export default function TasksPage() {
   return (

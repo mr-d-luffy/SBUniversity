@@ -2,7 +2,7 @@ import { PageHeader } from "@/components/ui/Card";
 import { ApprovalQueue } from "@/components/features/ApprovalQueue";
 import { TeacherTaskCreator } from "@/components/features/TeacherTaskCreator";
 
-export const metadata = { title: "Task Approvals – SBUniversity Faculty" };
+export const metadata = { title: "Task Approvals | Faculty" };
 
 export default function TeacherTasks() {
   return (

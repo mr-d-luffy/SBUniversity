@@ -1,7 +1,7 @@
 import { PageHeader } from "@/components/ui/Card";
 import { AdminCourses } from "@/components/features/AdminCourses";
 
-export const metadata = { title: "Course Control – SBUniversity Admin" };
+export const metadata = { title: "Course Control | Admin" };
 
 export default function AdminCoursesPage() {
   return (

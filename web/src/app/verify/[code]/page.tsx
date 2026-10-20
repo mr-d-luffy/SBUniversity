@@ -59,7 +59,7 @@ export default function VerifyCodePage({ params }: { params: Promise<{ code: str
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-green-700 text-cream-200">
               <GraduationCap size={20} />
             </span>
-            <span className="font-heading text-lg font-bold text-green-700">SBUniversity</span>
+            <span className="font-heading text-lg font-bold text-green-700">SiliconBrains University</span>
           </Link>
           <Button href="/" variant="secondary" size="sm" className="max-w-full">
             <ArrowLeft size={14} /> Back to University
@@ -77,7 +77,7 @@ export default function VerifyCodePage({ params }: { params: Promise<{ code: str
             Credential Verification Result
           </h1>
           <p className="mt-1 text-sm text-ink-muted">
-            Cryptographic authenticity verified directly against the SBUniversity database.
+            Credential details are checked against the SiliconBrains University registry.
           </p>
         </div>
 
@@ -170,7 +170,7 @@ export default function VerifyCodePage({ params }: { params: Promise<{ code: str
             {/* Verification Footer Note */}
             <div className="rounded-xl border border-cream-300 bg-cream-100/50 p-4 text-center text-xs text-ink-muted">
               <p>
-                This digital verification is served directly by the SBUniversity Academic Verification Registry.
+                This digital verification is served by the SiliconBrains University credential registry.
                 No third-party modification or duplication is permitted.
               </p>
             </div>
@@ -206,7 +206,7 @@ export default function VerifyCodePage({ params }: { params: Promise<{ code: str
       </main>
 
       <footer className="border-t border-cream-300 py-8 text-center text-xs text-ink-muted">
-        © 2026 SBUniversity · Official Public Verification Registry
+        © 2026 SiliconBrains University · Public Credential Verification
       </footer>
     </div>
   );

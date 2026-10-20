@@ -10,7 +10,7 @@ from app.services.ranking_service import RankingService
 
 
 async def seed_database():
-    print("🌱 Starting SBUniversity database seed...")
+    print("🌱 Starting SiliconBrains University database seed...")
 
     async with AsyncSessionLocal() as session:
         # Check if already seeded

@@ -1,4 +1,4 @@
-# SBUniversity Project Memory / Current State
+# SiliconBrains University Project Memory / Current State
 
 > Update this file after meaningful project changes.
 

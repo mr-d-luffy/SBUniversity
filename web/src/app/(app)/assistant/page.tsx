@@ -26,7 +26,7 @@ const STARTER_TOPICS = [
   {
     icon: Award,
     title: "Certificate Verification",
-    prompt: "How do employers or academic bodies verify SBUniversity certificates?",
+    prompt: "How do employers or academic bodies verify SiliconBrains University certificates?",
   },
   {
     icon: Sparkles,
@@ -75,7 +75,7 @@ export default function AssistantPage() {
       } else if (lower.includes("point") || lower.includes("rank") || lower.includes("leaderboard")) {
         reply = "### Live Ranking Strategy\n\n- **1. Prioritize High-Yield Tasks**: Check **My Tasks** for assignments worth 50+ Task Points.\n- **2. Pass Every Course Exam**: When teachers publish exams with linked Task Points, passing the exam awards points immediately upon submission.\n- **3. Submit Early for Review**: For assignment tasks, submit clean code or repository URLs so teachers can approve them promptly in the queue.\n- **4. Tie-Breaker**: Remember, students who reach a points threshold earlier rank higher on the Top-4 leaderboard!";
       } else if (lower.includes("certif")) {
-        reply = "### Certificate Verification\n\nEvery SBUniversity certificate is cryptographically verified and includes:\n- A unique permanent Certificate ID (e.g., `SBU-CERT-2026-XXXX`).\n- A secure QR code printed directly on the certificate.\n- Anyone can verify authenticity at `/verify/[code]` without requiring login credentials.\n- The verification page displays the student's name, course title, completion date, and validity status.";
+        reply = "### Certificate Verification\n\nSiliconBrains University certificates include a unique credential code and can be checked on the public verification page.\n\nEnter the code printed on the credential at `/verify` to look up its current status.";
       } else if (lower.includes("notice")) {
         reply = "### Active University Notices Summary\n\n1. **Midterm Schedule Published**: Data Structures midterm opens inside its scheduled window. Single 45-minute timed attempt.\n2. **Scheduled Maintenance**: Portal services will undergo brief routine updates tonight from 1 AM to 2 AM.\n3. **Library Hours**: Central library adjusted schedule on Friday at 4 PM.";
       } else {

@@ -1,5 +1,5 @@
 /**
- * SBUniversity Frontend API Client
+ * SiliconBrains University Frontend API Client
  * Typed fetch wrapper for the FastAPI backend (/api/v1) with support for Clerk JWTs and Dev Bypass Tokens.
  */
 export function getBaseUrl(): string {

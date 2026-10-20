@@ -1,6 +1,6 @@
-# SBUniversity
+# SiliconBrains University
 
-SBUniversity is a role-based learning platform with student, teacher, and admin experiences. The web application uses Next.js, TypeScript, and Tailwind CSS; the API uses FastAPI and SQLAlchemy with PostgreSQL as its source of truth.
+SiliconBrains University is a role-based learning platform with student, teacher, and admin experiences. The web application uses Next.js, TypeScript, and Tailwind CSS; the API uses FastAPI and SQLAlchemy with PostgreSQL as its source of truth.
 
 ## Current capabilities
 
@@ -19,6 +19,7 @@ SBUniversity is a role-based learning platform with student, teacher, and admin 
 ## Local development
 
 1. Configure `web/.env.local` from [`web/.env.example`](./web/.env.example) and `server/.env` from [`server/.env.example`](./server/.env.example). Keep all secrets out of source control.
+   Set `NEXT_PUBLIC_SITE_URL` to the production website origin so canonical URLs and `sitemap.xml` use the correct domain.
 2. Apply database migrations from `server/` with `alembic upgrade head`. The Supabase SQL bootstrap/update is in [`server/supabase_migration.sql`](./server/supabase_migration.sql).
 3. Start the API from the repository root with `./scripts/run-local-backend.sh`.
 4. Start the frontend from `web/` with `npm install` then `npm run dev`.

@@ -31,12 +31,12 @@ const features = [
   {
     icon: Trophy,
     title: "Automated Live Ranking",
-    text: "Earn Task Points automatically by passing exams and completing assignments. Live Top-4 podium updates the instant points are approved.",
+    text: "Earn Task Points by passing exams and completing approved assignments, then follow the live Top-4 ranking.",
   },
   {
     icon: Award,
     title: "Cryptographically Verified Certificates",
-    text: "Every certificate features a unique permanent code and QR that employers or universities can verify instantly with zero login.",
+    text: "Course credentials include a unique code that can be checked through the public verification service.",
   },
   {
     icon: IdCard,
@@ -46,12 +46,12 @@ const features = [
   {
     icon: Sparkles,
     title: "Aarsh Intelligence AI Tutor",
-    text: "An academic study assistant powered by Gemini that clarifies difficult concepts, guided by strict anti-cheat proctoring rules.",
+    text: "An AI study assistant powered by Gemini that can help learners review topics and clarify concepts.",
   },
   {
     icon: BarChart3,
     title: "Actionable Faculty & Admin Analytics",
-    text: "Real-time insight into student progress, exam score distributions, submission queues, and course completion velocity.",
+    text: "Monitor student progress, exam results, submission queues, and course completion across your institution.",
   },
 ];
 
@@ -89,11 +89,11 @@ export default function Landing() {
       {/* Top Header */}
       <header className="sticky top-0 z-30 border-b border-cream-300 bg-cream-50/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-2 px-3 sm:gap-4 sm:px-6">
-          <Link href="/" className="flex min-w-0 items-center gap-2 font-heading text-base font-bold text-green-700 sm:gap-2.5 sm:text-lg">
+          <Link href="/" className="flex min-w-0 items-center gap-2 font-heading text-sm font-bold text-green-700 sm:gap-2.5 sm:text-lg">
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-green-700 text-cream-200 shadow-sm">
               <GraduationCap size={20} aria-hidden />
             </span>
-            <span>SBUniversity</span>
+            <span>SiliconBrains University</span>
           </Link>
 
           <div className="flex shrink-0 items-center gap-1 sm:gap-2.5">
@@ -126,11 +126,11 @@ export default function Landing() {
               </div>
 
               <h1 className="font-heading text-3xl font-bold leading-tight text-green-900 min-[400px]:text-4xl sm:text-5xl lg:text-5xl">
-                Learn, test, and achieve verified academic distinction.
+                Online learning and exams for students and teachers.
               </h1>
 
               <p className="max-w-xl text-base leading-relaxed text-ink-muted sm:text-lg">
-                SBUniversity unifies rigorous timed examinations, automated Task Point rankings, official verifiable credentials, and Gemini-powered AI tutoring into one cohesive learning portal.
+                SiliconBrains University is an academic learning platform for course management, online examinations, assignments, student progress and academic credentials. Students, teachers and administrators can use role-based tools in one portal.
               </p>
 
               <div className="flex flex-col items-stretch gap-2.5 pt-2 min-[400px]:flex-row min-[400px]:flex-wrap min-[400px]:items-center sm:gap-3.5">
@@ -145,66 +145,43 @@ export default function Landing() {
                 </Button>
               </div>
 
-              {/* Public Live Statistics Counter */}
-              <div className="grid grid-cols-3 gap-2 border-t border-cream-300 pt-5 min-[400px]:gap-4 sm:pt-6">
-                <div>
-                  <p className="font-heading text-xl font-bold text-green-700 min-[400px]:text-2xl sm:text-3xl">4,800+</p>
-                  <p className="text-[11px] text-ink-muted min-[400px]:text-xs">Enrolled Students</p>
-                </div>
-                <div>
-                  <p className="font-heading text-xl font-bold text-green-700 min-[400px]:text-2xl sm:text-3xl">98.4%</p>
-                  <p className="text-[11px] text-ink-muted min-[400px]:text-xs">Exam Completion</p>
-                </div>
-                <div>
-                  <p className="font-heading text-xl font-bold text-green-700 min-[400px]:text-2xl sm:text-3xl">100%</p>
-                  <p className="text-[11px] text-ink-muted min-[400px]:text-xs">Verifiable PDFs</p>
-                </div>
-              </div>
             </div>
 
-            {/* Live Podium Preview Card */}
+            {/* Academic platform overview */}
             <div className="lg:col-span-5">
               <div className="relative rounded-2xl border border-cream-300 bg-white p-6 shadow-xl">
                 <div className="mb-4 flex items-center justify-between border-b border-cream-200 pb-3">
                   <div className="flex items-center gap-2">
-                    <Trophy size={18} className="text-rank-gold" />
+                    <GraduationCap size={18} className="text-green-700" />
                     <h2 className="font-heading text-base font-bold text-green-900">
-                      Top Performers Podium
+                      Your academic portal
                     </h2>
                   </div>
-                  <span className="flex items-center gap-1.5 text-xs font-semibold text-green-700">
-                    <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
-                    Live
-                  </span>
                 </div>
 
                 <div className="space-y-3">
                   {[
-                    { rank: 1, name: "Isha Patil", points: 520, badge: "Gold #1", medal: "bg-rank-gold" },
-                    { rank: 2, name: "Kabir Nair", points: 455, badge: "Silver #2", medal: "bg-rank-silver" },
-                    { rank: 3, name: "Sneha Joshi", points: 410, badge: "Bronze #3", medal: "bg-rank-bronze" },
-                    { rank: 4, name: "Vikram Rao", points: 300, badge: "Honors #4", medal: "bg-green-700" },
-                  ].map((s) => (
+                    { icon: FileCheck2, title: "Course examinations", detail: "Take scheduled, timed assessments." },
+                    { icon: CheckCircle2, title: "Tasks and progress", detail: "Keep course work and achievements together." },
+                    { icon: Award, title: "Academic credentials", detail: "Access course records and credential tools." },
+                  ].map(({ icon: Icon, title, detail }) => (
                     <div
-                      key={s.name}
-                      className="flex items-center gap-3.5 rounded-xl border border-cream-200 bg-cream-50/60 p-3 transition-colors hover:bg-cream-100/60"
+                      key={title}
+                      className="flex items-center gap-3.5 rounded-xl border border-cream-200 bg-cream-50/60 p-3"
                     >
-                      <span className={`grid h-8 w-8 place-items-center rounded-full text-xs font-bold text-white ${s.medal}`}>
-                        {s.rank}
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-green-100 text-green-700">
+                        <Icon size={18} aria-hidden />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-semibold text-sm text-green-900">{s.name}</p>
-                        <p className="text-[11px] text-ink-muted">{s.badge}</p>
+                        <p className="font-semibold text-sm text-green-900">{title}</p>
+                        <p className="text-[11px] text-ink-muted">{detail}</p>
                       </div>
-                      <span className="font-heading font-bold text-sm text-bordo-700">
-                        +{s.points} pts
-                      </span>
                     </div>
                   ))}
                 </div>
 
                 <div className="mt-4 rounded-xl bg-green-50 p-3 text-center text-xs text-green-900">
-                  <span>Task Points update automatically upon exam or task completion</span>
+                  <span>Students, teachers and administrators each have role-based portal tools.</span>
                 </div>
               </div>
             </div>
@@ -221,7 +198,7 @@ export default function Landing() {
               Verify Any University Credential
             </h2>
             <p className="mx-auto mt-2 max-w-xl text-sm text-ink-muted">
-              Validate the authenticity of any SBUniversity Course Certificate or Student ID Card issued by our registrar.
+              Check a SiliconBrains University credential using its verification code.
             </p>
 
             <form onSubmit={handleVerify} className="mx-auto mt-6 flex max-w-xl flex-col gap-2 sm:flex-row">
@@ -277,7 +254,7 @@ export default function Landing() {
                 Seamless Learner Journey
               </span>
               <h2 className="mt-1 font-heading text-3xl font-bold !text-cream-50 sm:text-4xl">
-                How SBUniversity Works
+                How SiliconBrains University Works
               </h2>
             </div>
 
@@ -318,7 +295,7 @@ export default function Landing() {
             <span className="grid h-6 w-6 place-items-center rounded bg-green-700 text-cream-200 text-xs font-bold">
               SBU
             </span>
-            <span className="font-semibold text-green-900">SBUniversity Academic Platform</span>
+            <span className="font-semibold text-green-900">SiliconBrains University Academic Platform</span>
           </div>
           <div className="flex flex-wrap justify-center gap-x-5 gap-y-3 sm:justify-end">
             <Link href="/verify" className="hover:underline">Verify Credential</Link>
@@ -327,7 +304,7 @@ export default function Landing() {
             <Link href="/sign-in" className="hover:underline">Sign In</Link>
             <Link href="/sign-up" className="font-semibold text-green-900 hover:underline">Sign Up</Link>
           </div>
-          <p>© 2026 SBUniversity. Built to academic precision standards.</p>
+          <p>© 2026 SiliconBrains University.</p>
         </div>
       </footer>
     </div>

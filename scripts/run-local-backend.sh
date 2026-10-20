@@ -7,7 +7,7 @@ PYTHON="$SERVER_DIR/.venv/bin/python"
 PORT="${SBUNIVERSITY_API_PORT:-8010}"
 
 if [ ! -x "$PYTHON" ]; then
-  printf 'SBUniversity virtualenv not found at %s\n' "$PYTHON" >&2
+  printf 'SiliconBrains University virtualenv not found at %s\n' "$PYTHON" >&2
   printf 'Create it and install server dependencies before starting the API.\n' >&2
   exit 1
 fi

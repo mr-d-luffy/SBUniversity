@@ -9,7 +9,7 @@ export const ME_ID = "s1";
 export const leaderboard: RankedStudent[] = [
   { id: "s2", name: "Isha Patil", points: 520, tasks: 15 },
   { id: "s3", name: "Kabir Nair", points: 455, tasks: 13 },
-  { id: "s4", name: "Sneha Joshi", points: 410, tasks: 12 },
+  { id: "s4", name: "khushi Joshi", points: 410, tasks: 12 },
   { id: "s5", name: "Vikram Rao", points: 300, tasks: 8 },
   { id: "s1", name: "Aarav Sharma", points: 290, tasks: 9 },
   { id: "s6", name: "Neha Kulkarni", points: 260, tasks: 7 },

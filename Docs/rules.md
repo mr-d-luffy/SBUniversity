@@ -1,4 +1,4 @@
-# rules.md — SBUniversity Development Rules
+# rules.md — SiliconBrains University Development Rules
 
 > Mandatory for every developer and AI assistant working on this repo.
 

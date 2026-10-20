@@ -19,6 +19,8 @@ import {
   LogOut,
   Megaphone,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   MessagesSquare,
   Presentation,
   Sparkles,
@@ -91,6 +93,7 @@ const NAV: Record<Role, NavItem[]> = {
 
 export function Shell({ role, name, demo, children }: { role: Role; name: string; demo: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const path = usePathname();
   const menuButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -117,7 +120,7 @@ export function Shell({ role, name, demo, children }: { role: Role; name: string
   }, [open]);
 
   const nav = (
-    <nav id="portal-navigation" aria-label="Main Navigation" className="flex flex-col gap-1.5 px-3 py-4">
+    <nav id="portal-navigation" aria-label="Main Navigation" className={clsx("flex flex-col gap-1.5 py-4", collapsed ? "px-2" : "px-3")}>
       {NAV[role].map(({ href, label, icon: Icon, badge }) => {
         const active = path === href || path.startsWith(href + "/");
         return (
@@ -125,8 +128,10 @@ export function Shell({ role, name, demo, children }: { role: Role; name: string
             key={href}
             href={href}
             aria-current={active ? "page" : undefined}
+            title={collapsed ? label : undefined}
             className={clsx(
-              "group flex h-11 items-center gap-3 rounded-lg px-3.5 text-sm transition-all duration-150",
+              "group flex h-11 items-center rounded-lg text-sm transition-all duration-150",
+              collapsed ? "justify-center px-0" : "gap-3 px-3.5",
               active
                 ? "bg-cream-200 text-green-900 font-semibold shadow-sm"
                 : "text-cream-100/90 hover:bg-green-600 hover:text-cream-50"
@@ -138,9 +143,9 @@ export function Shell({ role, name, demo, children }: { role: Role; name: string
               className={clsx(active ? "text-green-900" : "text-cream-200/90 group-hover:text-cream-100")}
               aria-hidden
             />
-            <span className="truncate">{label}</span>
+            <span className={clsx("truncate", collapsed && "lg:hidden")}>{label}</span>
 
-            {badge && !active && (
+            {badge && !active && !collapsed && (
               <span className="ml-auto rounded-full bg-green-900/60 px-2 py-0.5 text-[10px] font-medium text-cream-200">
                 {badge}
               </span>
@@ -149,7 +154,7 @@ export function Shell({ role, name, demo, children }: { role: Role; name: string
             {/* In the design system, active pill has a small bordo-700 dot inside the cream pill */}
             {active && (
               <span
-                className="ml-auto h-2 w-2 rounded-full bg-bordo-700 shadow-sm"
+                className={clsx("ml-auto h-2 w-2 rounded-full bg-bordo-700 shadow-sm", collapsed && "hidden")}
                 title="Current page"
                 aria-hidden
               />
@@ -162,27 +167,28 @@ export function Shell({ role, name, demo, children }: { role: Role; name: string
 
   return (
     <ToastProvider>
-      <div className="min-h-dvh bg-cream-50 lg:pl-64">
+      <div className={clsx("min-h-dvh bg-cream-50 transition-[padding] duration-200", collapsed ? "lg:pl-16" : "lg:pl-64")}>
         {/* Deep Green Heritage Sidebar (30% secondary brand structure) */}
         <aside
           className={clsx(
-            "fixed inset-y-0 left-0 z-40 flex w-[min(18rem,calc(100vw-2.5rem))] flex-col bg-green-700 pb-[env(safe-area-inset-bottom)] text-cream-100 shadow-lg transition-transform duration-200 lg:w-64 lg:translate-x-0",
+            "fixed inset-y-0 left-0 z-40 flex w-[min(18rem,calc(100vw-2.5rem))] flex-col bg-green-700 pb-[env(safe-area-inset-bottom)] text-cream-100 shadow-lg transition-[transform,width] duration-200 lg:translate-x-0",
+            collapsed ? "lg:w-16" : "lg:w-64",
             open ? "translate-x-0" : "-translate-x-full"
           )}
           aria-label="Main menu"
         >
           {/* Logo & Crest */}
-          <div className="flex h-16 items-center justify-between border-b border-green-900/40 px-5">
-            <Link href="/" className="flex items-center gap-2.5">
+          <div className={clsx("flex h-16 items-center border-b border-green-900/40", collapsed ? "justify-center px-2" : "justify-between px-5")}>
+            <Link href="/" className={clsx("flex items-center", collapsed ? "justify-center" : "gap-2.5")} title={collapsed ? "SiliconBrains University" : undefined}>
               <span className="grid h-9 w-9 place-items-center rounded-lg bg-cream-200 text-green-900 shadow-sm">
                 <GraduationCap size={20} aria-hidden />
               </span>
-              <div>
+              <div className={clsx(collapsed && "lg:hidden")}>
                 <span className="block font-heading text-lg font-bold leading-tight text-cream-50">
-                  SBUniversity
+                  SiliconBrains
                 </span>
                 <span className="block text-[10px] font-medium uppercase tracking-wider text-cream-300">
-                  Academic Portal
+                  University
                 </span>
               </div>
             </Link>
@@ -202,12 +208,12 @@ export function Shell({ role, name, demo, children }: { role: Role; name: string
           </div>
 
           {/* User Status Footer in Sidebar */}
-          <div className="border-t border-green-900/40 p-3.5">
-            <div className="flex items-center gap-3 rounded-lg bg-green-900/40 p-2.5">
+          <div className={clsx("border-t border-green-900/40", collapsed ? "p-2" : "p-3.5")}>
+            <div className={clsx("flex items-center rounded-lg bg-green-900/40", collapsed ? "justify-center p-2" : "gap-3 p-2.5")} title={collapsed ? `${name} — ${role}` : undefined}>
               <div className="grid h-8 w-8 place-items-center rounded-full bg-cream-200 font-heading text-xs font-bold text-green-900">
                 {name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
               </div>
-              <div className="min-w-0 flex-1">
+              <div className={clsx("min-w-0 flex-1", collapsed && "lg:hidden")}>
                 <p className="truncate text-xs font-semibold text-cream-50">{name}</p>
                 <p className="text-[10px] uppercase tracking-wider text-cream-300">{role}</p>
               </div>
@@ -237,6 +243,9 @@ export function Shell({ role, name, demo, children }: { role: Role; name: string
             onClick={() => setOpen(!open)}
           >
             {open ? <X size={22} /> : <Menu size={22} />}
+          </button>
+          <button type="button" onClick={() => setCollapsed((value) => !value)} className="hidden h-11 w-11 shrink-0 place-items-center rounded-lg text-green-700 hover:bg-green-50 lg:grid" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
+            {collapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
           </button>
 
           {/* Quick breadcrumb / brand hint */}

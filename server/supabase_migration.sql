@@ -1,5 +1,5 @@
 -- =============================================================================
--- SBUniversity Production Supabase PostgreSQL Schema Migration
+-- SiliconBrains University Production Supabase PostgreSQL Schema Migration
 -- Source of Truth: Docs/database.md & Docs/architecture.md
 -- =============================================================================
 

@@ -1,4 +1,4 @@
-# database.md — SBUniversity Database Design
+# database.md — SiliconBrains University Database Design
 
 ## 1. Technology
 - **Supabase PostgreSQL** (database name: `postgres`, schema `public`)

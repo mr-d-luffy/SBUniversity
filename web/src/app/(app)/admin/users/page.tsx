@@ -1,7 +1,7 @@
 import { PageHeader } from "@/components/ui/Card";
 import { UsersTable } from "@/components/features/UsersTable";
 
-export const metadata = { title: "User Control – SBUniversity Admin" };
+export const metadata = { title: "User Control | Admin" };
 
 export default function AdminUsers() {
   return (

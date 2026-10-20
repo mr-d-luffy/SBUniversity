@@ -1,7 +1,7 @@
-# System_Design.md — SBUniversity (HLD + LLD)
+# System_Design.md — SiliconBrains University (HLD + LLD)
 
 ## 1. Overview
-**Purpose:** SBUniversity is a role-based (Student/Teacher/Admin) university platform for online exams, backend-generated results and certificates, live ranking, notices, and an AI assistant (Aarsh Intelligence).
+**Purpose:** SiliconBrains University is a role-based (Student/Teacher/Admin) learning platform for online exams, generated results and certificates, live ranking, notices, and an AI assistant (Aarsh Intelligence).
 
 **Goals**
 - Secure, server-authoritative exam lifecycle (exam → result → certificate).

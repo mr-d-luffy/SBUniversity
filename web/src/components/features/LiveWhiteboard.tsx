@@ -720,7 +720,7 @@ export function LiveWhiteboard({ role }: { role: Role }) {
     <main className="mx-auto w-full max-w-[1600px] min-w-0 space-y-6">
       <header className="flex flex-col gap-4 rounded-2xl bg-green-900 px-5 py-6 text-white shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-7">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">SBUniversity · Live learning</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">SiliconBrains University · Live learning</p>
           <h1 className="mt-1 flex items-center gap-2 font-heading text-2xl font-bold sm:text-3xl">
             <Presentation size={27} aria-hidden /> Live Classroom
           </h1>

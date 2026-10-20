@@ -1,12 +1,12 @@
-# PRD.md — SBUniversity Product Requirements
+# PRD.md — SiliconBrains University Product Requirements
 
 > Source of truth for WHAT we are building. Version 0.1 (initial). Assumptions are marked **[A#]** and listed in section 17.
 
 ## 1. Project Name
-**SBUniversity**
+**SiliconBrains University**
 
 ## 2. Overview
-SBUniversity is a web-based university/learning platform where students take online exams, receive auto-generated results and course certificates, see a live leaderboard, and use an AI study assistant called **Aarsh Intelligence**. Teachers manage courses, exams, notices, tasks, and live classroom sessions. Admins manage courses and accounts, monitor progress and analytics, and control course membership and teaching assignments.
+SiliconBrains University is a web-based learning platform where students take online exams, receive generated results and course certificates, see a live leaderboard, and use an AI study assistant called **Aarsh Intelligence**. Teachers manage courses, exams, notices, tasks, and live classroom sessions. Admins manage courses and accounts, monitor progress and analytics, and control course membership and teaching assignments.
 
 ## 3. Problem Statement
 Institutions typically run exams, results, certificates, notices and student identity across disconnected tools. This causes manual result work, forged or unverifiable certificates, missed announcements, and no real-time view of student/teacher performance.

@@ -1,4 +1,4 @@
-# phases.md — SBUniversity Development Roadmap
+# phases.md — SiliconBrains University Development Roadmap
 
 Legend: `[ ]` pending · `[x]` done. Each phase must end with a working, demonstrable result.
 
