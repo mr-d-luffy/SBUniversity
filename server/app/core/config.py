@@ -54,6 +54,17 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_KEY: Optional[str] = None
     SUPABASE_STORAGE_BUCKET: str = "sbu-storage"
 
+    @field_validator("SUPABASE_STORAGE_BUCKET")
+    @classmethod
+    def validate_storage_bucket_name(cls, value: str) -> str:
+        bucket = value.strip()
+        if not bucket or "://" in bucket or "/" in bucket:
+            raise ValueError(
+                "SUPABASE_STORAGE_BUCKET must be a bucket name such as 'sbu-storage', "
+                "not a Supabase URL or storage endpoint"
+            )
+        return bucket
+
     # Clerk Auth
     CLERK_SECRET_KEY: Optional[str] = None
     CLERK_PUBLISHABLE_KEY: Optional[str] = None

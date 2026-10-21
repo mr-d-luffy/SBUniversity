@@ -171,15 +171,31 @@ class CourseService:
         requested_student_ids = set(student_ids or [])
         if enroll_all:
             requested_student_ids.update(await self._list_active_student_ids())
-        if requested_student_ids:
-            valid_student_ids = await self._validate_student_ids(
-                requested_student_ids
-            )
+        if student_ids is not None or enroll_all:
             existing = {
                 enrollment.student_id: enrollment
                 for enrollment in course.enrollments
             }
-            for student_id in valid_student_ids:
+            retained_existing_ids = {
+                student_id
+                for student_id, enrollment in existing.items()
+                if enrollment.status == EnrollmentStatus.ACTIVE
+            }
+            valid_student_ids = await self._validate_student_ids(
+                requested_student_ids,
+                allowed_existing_ids=retained_existing_ids,
+            )
+            selected_student_ids = set(valid_student_ids)
+            for student_id, enrollment in existing.items():
+                if (
+                    enrollment.status == EnrollmentStatus.ACTIVE
+                    and student_id not in selected_student_ids
+                ):
+                    # Keep the enrollment record (and its progress) while removing
+                    # the student's active access to this course.
+                    enrollment.status = EnrollmentStatus.DROPPED
+
+            for student_id in selected_student_ids:
                 enrollment = existing.get(student_id)
                 if enrollment is None:
                     course.enrollments.append(
@@ -312,7 +328,9 @@ class CourseService:
         )
 
     async def _validate_student_ids(
-        self, student_ids: set[uuid.UUID]
+        self,
+        student_ids: set[uuid.UUID],
+        allowed_existing_ids: set[uuid.UUID] | None = None,
     ) -> set[uuid.UUID]:
         if not student_ids:
             return set()
@@ -327,12 +345,13 @@ class CourseService:
                 )
             ).all()
         )
-        if active_student_ids != student_ids:
+        allowed_existing_ids = allowed_existing_ids or set()
+        if not student_ids.issubset(active_student_ids | allowed_existing_ids):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Every selected student must be an active student account.",
             )
-        return active_student_ids
+        return student_ids
 
     async def update_course(self, course_id: uuid.UUID, data: CourseUpdate, user: User) -> Course:
         course = await self.course_repo.get_by_id(course_id)

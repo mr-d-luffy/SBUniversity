@@ -43,6 +43,9 @@ class CommunityMessageResponse(BaseModel):
     sender_avatar_url: Optional[str] = None
     is_mine: bool
     content: str
+    audio_url: Optional[str] = None
+    audio_mime_type: Optional[str] = None
+    audio_size_bytes: Optional[int] = None
     created_at: datetime
 
 

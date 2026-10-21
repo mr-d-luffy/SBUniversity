@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 from typing import Any, Dict, Optional
@@ -10,6 +11,9 @@ from app.core.redis import get_redis_client
 
 JWKS_CACHE_KEY = "jwks:clerk"
 JWKS_CACHE_TTL = 3600  # 1 hour
+JWKS_REDIS_TIMEOUT = 1.5
+_jwks_memory_cache: Optional[Dict[str, Any]] = None
+_jwks_memory_expires_at = 0.0
 
 
 class SecurityError(Exception):
@@ -19,15 +23,29 @@ class SecurityError(Exception):
         super().__init__(message)
 
 
-async def get_clerk_jwks() -> Dict[str, Any]:
-    """Fetch and cache Clerk JWKS."""
+async def get_clerk_jwks(force_refresh: bool = False) -> Dict[str, Any]:
+    """Load Clerk signing keys, using Redis as an optional cache."""
+    global _jwks_memory_cache, _jwks_memory_expires_at
+
     redis = await get_redis_client()
-    cached = await redis.get(JWKS_CACHE_KEY)
-    if cached:
+    if not force_refresh:
         try:
-            return json.loads(cached)
-        except Exception:
-            pass
+            cached = await asyncio.wait_for(
+                redis.get(JWKS_CACHE_KEY), timeout=JWKS_REDIS_TIMEOUT
+            )
+            if cached:
+                try:
+                    jwks = json.loads(cached)
+                    _jwks_memory_cache = jwks
+                    _jwks_memory_expires_at = time.monotonic() + JWKS_CACHE_TTL
+                    return jwks
+                except (TypeError, json.JSONDecodeError):
+                    logger.warning("Ignoring malformed Clerk JWKS cache entry")
+        except Exception as exc:
+            logger.warning("Redis JWKS cache read failed; fetching keys from Clerk: %s", exc)
+
+        if _jwks_memory_cache and time.monotonic() < _jwks_memory_expires_at:
+            return _jwks_memory_cache
 
     jwks_url = settings.CLERK_JWKS_URL or "https://api.clerk.com/v1/jwks"
     headers = {}
@@ -39,13 +57,27 @@ async def get_clerk_jwks() -> Dict[str, Any]:
             resp = await client.get(jwks_url, headers=headers)
             if resp.status_code == 200:
                 jwks_data = resp.json()
-                await redis.set(JWKS_CACHE_KEY, json.dumps(jwks_data), ex=JWKS_CACHE_TTL)
+                _jwks_memory_cache = jwks_data
+                _jwks_memory_expires_at = time.monotonic() + JWKS_CACHE_TTL
+                try:
+                    await asyncio.wait_for(
+                        redis.set(
+                            JWKS_CACHE_KEY,
+                            json.dumps(jwks_data),
+                            ex=JWKS_CACHE_TTL,
+                        ),
+                        timeout=JWKS_REDIS_TIMEOUT,
+                    )
+                except Exception as exc:
+                    logger.warning("Could not cache Clerk JWKS in Redis: %s", exc)
                 return jwks_data
             else:
                 logger.error("Failed to fetch JWKS from Clerk: status %d", resp.status_code)
     except Exception as e:
         logger.error("Exception fetching JWKS: %s", e)
 
+    if _jwks_memory_cache and time.monotonic() < _jwks_memory_expires_at:
+        return _jwks_memory_cache
     return {"keys": []}
 
 
@@ -93,9 +125,7 @@ async def verify_clerk_token(token: str) -> Dict[str, Any]:
 
     if not matching_key:
         # Try refreshing JWKS once
-        redis = await get_redis_client()
-        await redis.delete(JWKS_CACHE_KEY)
-        jwks = await get_clerk_jwks()
+        jwks = await get_clerk_jwks(force_refresh=True)
         keys = jwks.get("keys", [])
         matching_key = next((k for k in keys if k.get("kid") == kid), None)
 

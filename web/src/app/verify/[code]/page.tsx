@@ -1,6 +1,5 @@
-"use client";
-import React, { useState, use } from "react";
 import Link from "next/link";
+import type { Metadata } from "next";
 import {
   GraduationCap,
   ShieldCheck,
@@ -10,19 +9,21 @@ import {
   Calendar,
   Building,
   User,
-  ExternalLink,
-  Search,
   ArrowLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
+import { CredentialInlineLookup } from "@/components/features/CredentialLookupForm";
 
-export default function VerifyCodePage({ params }: { params: Promise<{ code: string }> }) {
-  const unwrappedParams = use(params);
-  const code = decodeURIComponent(unwrappedParams.code);
+type VerifyCodePageProps = { params: Promise<{ code: string }> };
 
-  const [searchCode, setSearchCode] = useState(code);
+export async function generateMetadata({ params }: VerifyCodePageProps): Promise<Metadata> {
+  const { code } = await params;
+  return { title: `Credential Verification ${decodeURIComponent(code)}` };
+}
+
+export default async function VerifyCodePage({ params }: VerifyCodePageProps) {
+  const { code: encodedCode } = await params;
+  const code = decodeURIComponent(encodedCode);
 
   // Determine if code is certificate or student ID
   const isStudentId = code.startsWith("SBU-2026") || code.toLowerCase().includes("student");
@@ -180,26 +181,7 @@ export default function VerifyCodePage({ params }: { params: Promise<{ code: str
               <h3 className="text-xs font-semibold uppercase tracking-wider text-green-900 mb-2">
                 Verify another code
               </h3>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (searchCode.trim()) {
-                    window.location.href = `/verify/${encodeURIComponent(searchCode.trim())}`;
-                  }
-                }}
-                className="flex flex-col gap-2 sm:flex-row"
-              >
-                <input
-                  type="text"
-                  value={searchCode}
-                  onChange={(e) => setSearchCode(e.target.value)}
-                  placeholder="Enter Certificate Code (e.g. SBU-CERT-2026-PY01) or Student ID"
-                  className="h-11 min-w-0 flex-1 rounded-lg border border-cream-300 bg-white px-3 text-sm text-ink focus:border-green-700 focus:outline-none"
-                />
-                <Button variant="primary" size="sm" type="submit" className="w-full sm:w-auto">
-                  <Search size={15} /> Verify
-                </Button>
-              </form>
+              <CredentialInlineLookup initialCode={code} />
             </div>
           </div>
         </div>

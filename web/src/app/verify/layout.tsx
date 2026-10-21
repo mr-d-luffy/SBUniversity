@@ -6,5 +6,5 @@ export const metadata: Metadata = {
 };
 
 export default function VerificationLayout({ children }: { children: React.ReactNode }) {
-  return children;
+  return <div className="page-enter">{children}</div>;
 }

@@ -8,6 +8,7 @@ from app.repositories.community_chat_repository import (
     COMMUNITY_CHAT_LIFETIME,
     CommunityChatRepository,
 )
+from app.services.storage_service import StorageService
 from app.schemas.chat import (
     CommunityConversationResponse,
     CommunityMessageResponse,
@@ -23,7 +24,8 @@ class CommunityChatService:
         return await self.repo.delete_expired()
 
     async def get_or_create_student_room(self, user: User) -> CommunityConversation:
-        self._require_role(user, UserRole.STUDENT)
+        if user.role not in {UserRole.STUDENT, UserRole.TEACHER}:
+            raise HTTPException(status_code=403, detail="This chat action is not allowed")
         await self.cleanup_expired()
         return await self.repo.get_or_create_student_room()
 
@@ -42,7 +44,16 @@ class CommunityChatService:
                 if user.role == UserRole.ADMIN
                 else CommunityConversationKind.TEACHER_SUPPORT
             )
-            conversations = await self.repo.list_for_staff(kind)
+            conversations = await self.repo.list_for_staff(
+                kind,
+                user.id,
+                include_student_room=user.role == UserRole.TEACHER,
+                include_owned_admin_support=user.role == UserRole.TEACHER,
+            )
+            if user.role == UserRole.TEACHER:
+                room = await self.repo.get_or_create_student_room()
+                if room.id not in {conversation.id for conversation in conversations}:
+                    conversations.append(room)
         else:
             raise HTTPException(status_code=403, detail="Community chat is unavailable")
 
@@ -70,7 +81,8 @@ class CommunityChatService:
     async def list_students(
         self, current_user: User, search: str = ""
     ) -> List[CommunityStudentOption]:
-        self._require_role(current_user, UserRole.STUDENT)
+        if current_user.role not in {UserRole.STUDENT, UserRole.TEACHER, UserRole.ADMIN} or current_user.status != UserStatus.ACTIVE:
+            raise HTTPException(status_code=403, detail="This chat action is not allowed")
         await self.cleanup_expired()
         students = await self.repo.list_active_students(current_user.id, search)
         return [
@@ -85,7 +97,8 @@ class CommunityChatService:
     async def start_peer_direct(
         self, current_user: User, other_student_id: uuid.UUID
     ) -> CommunityConversationResponse:
-        self._require_role(current_user, UserRole.STUDENT)
+        if current_user.role not in {UserRole.STUDENT, UserRole.TEACHER, UserRole.ADMIN} or current_user.status != UserStatus.ACTIVE:
+            raise HTTPException(status_code=403, detail="This chat action is not allowed")
         await self.cleanup_expired()
         if other_student_id == current_user.id:
             raise HTTPException(status_code=400, detail="You cannot start a chat with yourself")
@@ -118,7 +131,11 @@ class CommunityChatService:
     async def start_staff_support(
         self, current_user: User, staff_role: UserRole
     ) -> CommunityConversationResponse:
-        self._require_role(current_user, UserRole.STUDENT)
+        if current_user.status != UserStatus.ACTIVE or not (
+            current_user.role == UserRole.STUDENT
+            or (current_user.role == UserRole.TEACHER and staff_role == UserRole.ADMIN)
+        ):
+            raise HTTPException(status_code=403, detail="This chat action is not allowed")
         if staff_role not in {UserRole.ADMIN, UserRole.TEACHER}:
             raise HTTPException(status_code=422, detail="Choose admin or teacher support")
         await self.cleanup_expired()
@@ -163,6 +180,13 @@ class CommunityChatService:
                 sender_avatar_url=message.sender.avatar_url,
                 is_mine=message.sender_id == user.id,
                 content=message.content,
+                audio_url=(
+                    f"/community-chat/messages/{message.id}/audio"
+                    if message.audio_path
+                    else None
+                ),
+                audio_mime_type=message.audio_mime_type,
+                audio_size_bytes=message.audio_size_bytes,
                 created_at=message.created_at,
             )
             for message in rows
@@ -186,8 +210,71 @@ class CommunityChatService:
             sender_avatar_url=message.sender.avatar_url,
             is_mine=message.sender_id == user.id,
             content=message.content,
+            audio_url=None,
+            audio_mime_type=None,
+            audio_size_bytes=None,
             created_at=message.created_at,
         )
+
+    async def send_audio(
+        self,
+        user: User,
+        conversation_id: uuid.UUID,
+        contents: bytes,
+        media_type: str,
+        extension: str,
+    ) -> CommunityMessageResponse:
+        await self.cleanup_expired()
+        conversation = await self._get_accessible_conversation(user, conversation_id)
+        if not contents:
+            raise HTTPException(status_code=400, detail="Audio recording is empty")
+        message_id = uuid.uuid4()
+        storage_path = (
+            f"community-chat/{conversation.id}/{message_id}.{extension}"
+        )
+        saved_path = await StorageService.upload_file(storage_path, contents, media_type)
+        try:
+            message = await self.repo.add_message(
+                conversation,
+                user.id,
+                "Voice message",
+                audio_path=saved_path,
+                audio_mime_type=media_type,
+                audio_size_bytes=len(contents),
+            )
+        except Exception:
+            await StorageService.delete_file(saved_path)
+            raise
+        return CommunityMessageResponse(
+            id=message.id,
+            conversation_id=message.conversation_id,
+            sender_id=message.sender_id,
+            sender_name=message.sender.full_name,
+            sender_role=message.sender.role,
+            sender_avatar_url=message.sender.avatar_url,
+            is_mine=True,
+            content=message.content,
+            audio_url=f"/community-chat/messages/{message.id}/audio",
+            audio_mime_type=message.audio_mime_type,
+            audio_size_bytes=message.audio_size_bytes,
+            created_at=message.created_at,
+        )
+
+    async def get_audio(
+        self, user: User, message_id: uuid.UUID
+    ) -> tuple[bytes, str]:
+        await self.cleanup_expired()
+        message = await self.repo.get_message(message_id)
+        if (
+            message is None
+            or not message.audio_path
+            or not self._can_access(user, message.conversation)
+        ):
+            raise HTTPException(status_code=404, detail="Voice message not found")
+        contents = await StorageService.download_file(message.audio_path)
+        if contents is None:
+            raise HTTPException(status_code=404, detail="Voice message audio not found")
+        return contents, message.audio_mime_type or "application/octet-stream"
 
     async def _get_accessible_conversation(
         self, user: User, conversation_id: uuid.UUID
@@ -198,18 +285,13 @@ class CommunityChatService:
         return conversation
 
     @staticmethod
-    def _require_role(user: User, role: UserRole) -> None:
-        if user.role != role or user.status != UserStatus.ACTIVE:
-            raise HTTPException(status_code=403, detail="This chat action is not allowed")
-
-    @staticmethod
     def _can_access(user: User, conversation: CommunityConversation) -> bool:
         if user.status != UserStatus.ACTIVE:
             return False
         if conversation.kind == CommunityConversationKind.STUDENT_ROOM:
-            return user.role == UserRole.STUDENT
+            return user.role in {UserRole.STUDENT, UserRole.TEACHER}
         if conversation.kind == CommunityConversationKind.PEER_DIRECT:
-            return user.role == UserRole.STUDENT and user.id in {
+            return user.role in {UserRole.STUDENT, UserRole.TEACHER, UserRole.ADMIN} and user.id in {
                 conversation.peer_one_id,
                 conversation.peer_two_id,
             }
@@ -217,7 +299,7 @@ class CommunityChatService:
             return (
                 user.role == UserRole.ADMIN
                 or (
-                    user.role == UserRole.STUDENT
+                    user.role in {UserRole.STUDENT, UserRole.TEACHER}
                     and user.id == conversation.requester_student_id
                 )
             )
@@ -252,13 +334,14 @@ class CommunityChatService:
             other_user_role = UserRole.STUDENT
         elif conversation.kind == CommunityConversationKind.ADMIN_SUPPORT:
             requester = users.get(conversation.requester_student_id)
+            is_requester = current_user.id == conversation.requester_student_id
             title = (
                 "Admin Support"
-                if current_user.role == UserRole.STUDENT
-                else requester.full_name if requester else "Student"
+                if is_requester
+                else requester.full_name if requester else "User"
             )
             other_user_role = UserRole.ADMIN
-            if current_user.role != UserRole.STUDENT:
+            if not is_requester:
                 other_user_id = conversation.requester_student_id
         else:
             requester = users.get(conversation.requester_student_id)

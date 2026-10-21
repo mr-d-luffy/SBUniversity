@@ -1,26 +1,25 @@
-"use client";
-import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import type { Metadata } from "next";
 import {
   Award,
   BarChart3,
-  Bot,
   CheckCircle2,
-  Clock,
   FileCheck2,
   GraduationCap,
   IdCard,
-  QrCode,
-  Search,
   ShieldCheck,
   Sparkles,
   Trophy,
-  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Badge, PointsChip } from "@/components/ui/Badge";
+import { CredentialVerifyForm } from "@/components/features/CredentialVerifyForm";
+
+export const metadata: Metadata = {
+  title: "Online Learning, Exams & Academic Credentials",
+  description: "SiliconBrains University brings online courses, secure exams, assignments, student progress, live rankings and verifiable academic credentials together in one learning platform.",
+  alternates: { canonical: "/" },
+};
 
 const features = [
   {
@@ -74,16 +73,6 @@ const steps = [
 ];
 
 export default function Landing() {
-  const [verifyCode, setVerifyCode] = useState("");
-  const router = useRouter();
-
-  const handleVerify = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (verifyCode.trim()) {
-      router.push(`/verify/${encodeURIComponent(verifyCode.trim())}`);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-cream-50 text-ink">
       {/* Top Header */}
@@ -115,7 +104,7 @@ export default function Landing() {
         </div>
       </header>
 
-      <main>
+      <main className="page-enter">
         {/* Hero Section */}
         <section className="relative overflow-hidden bg-gradient-to-b from-cream-100 to-cream-50 pb-12 pt-10 sm:pb-16 sm:pt-12 lg:pt-20 lg:pb-24">
           <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-12">
@@ -201,24 +190,7 @@ export default function Landing() {
               Check a SiliconBrains University credential using its verification code.
             </p>
 
-            <form onSubmit={handleVerify} className="mx-auto mt-6 flex max-w-xl flex-col gap-2 sm:flex-row">
-              <div className="relative flex-1">
-                <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-ink-placeholder">
-                  <Search size={18} />
-                </span>
-                <input
-                  type="text"
-                  required
-                  value={verifyCode}
-                  onChange={(e) => setVerifyCode(e.target.value)}
-                  placeholder="Enter Certificate Code (e.g. SBU-CERT-2026-PY01)"
-                  className="h-12 w-full rounded-xl border border-cream-300 bg-white pl-11 pr-4 text-sm font-mono text-ink placeholder:text-ink-placeholder focus:border-green-700 focus:outline-none shadow-sm"
-                />
-              </div>
-              <Button type="submit" variant="primary" size="lg">
-                Verify Credential
-              </Button>
-            </form>
+            <CredentialVerifyForm />
           </div>
         </section>
 

@@ -25,6 +25,8 @@ interface CourseProgress {
   course_id: string;
   course_title: string;
   progress_percent: number;
+  completed_tasks: number;
+  total_tasks: number;
   status: string;
 }
 
@@ -63,8 +65,8 @@ export default function AdminProgressPage() {
     return token;
   }, [getToken]);
 
-  const loadProgress = useCallback(async () => {
-    setLoading(true);
+  const loadProgress = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const token = await resolveToken();
       const q = search.trim() ? `?search=${encodeURIComponent(search.trim())}` : "";
@@ -76,15 +78,22 @@ export default function AdminProgressPage() {
     } catch (err) {
       console.error("Failed to fetch student progress:", err);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [resolveToken, search]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
-      loadProgress();
+      void loadProgress();
     }, 300);
     return () => clearTimeout(handler);
+  }, [loadProgress]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void loadProgress(false);
+    }, 15000);
+    return () => clearInterval(interval);
   }, [loadProgress]);
 
   const totalPoints = records.reduce((acc, r) => acc + r.total_points, 0);
@@ -104,7 +113,7 @@ export default function AdminProgressPage() {
       />
 
       {/* KPI Stats */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard value={total} label="Enrolled Students" hint="Active platform learners" />
         <StatCard value={totalPoints} label="Total Task Points" hint="Awarded from tasks/exams" />
         <StatCard value={totalTasks} label="Tasks Completed" hint="Across all departments" />
@@ -141,61 +150,66 @@ export default function AdminProgressPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="grid min-w-0 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
           {records.map((r) => (
             <Card
               key={r.student_id}
-              className="flex min-w-0 flex-col justify-between gap-4 p-4 transition-all hover:shadow-md sm:flex-row sm:items-center sm:p-5"
+              className="min-w-0 p-3.5 transition-shadow hover:shadow-md sm:p-4"
             >
-              <div className="space-y-1.5 flex-1 min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-heading text-base font-bold text-green-900">{r.name}</h3>
-                  <span className="rounded-md bg-cream-200 px-2 py-0.5 font-mono text-xs font-semibold text-green-900">
-                    {r.student_code}
-                  </span>
-                  {r.rank ? (
-                    <Badge tone="success">Rank #{r.rank}</Badge>
-                  ) : (
-                    <Badge tone="neutral">Unranked</Badge>
-                  )}
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                    <h3 className="max-w-full truncate font-heading text-sm font-bold text-green-900 sm:text-base">{r.name}</h3>
+                    <span className="rounded-md bg-cream-200 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-green-900 sm:text-xs">
+                      {r.student_code}
+                    </span>
+                    {r.rank ? <Badge tone="success">Rank #{r.rank}</Badge> : <Badge tone="neutral">Unranked</Badge>}
+                  </div>
+                  <p className="mt-1 truncate text-xs text-ink-muted">{r.email}</p>
                 </div>
-
-                <p className="break-words text-xs text-ink-muted">{r.email}</p>
-
-                {/* Courses Progress Bars */}
-                <div className="pt-2 space-y-2 max-w-lg">
-                  {r.courses.length === 0 ? (
-                    <p className="text-[11px] text-ink-muted">No course enrollments recorded.</p>
-                  ) : (
-                    r.courses.map((c) => (
-                      <div key={c.course_id} className="space-y-1">
-                        <div className="flex min-w-0 justify-between gap-3 text-xs">
-                          <span className="min-w-0 flex-1 truncate font-medium text-green-900">
-                            {c.course_title}
-                          </span>
-                          <span className="shrink-0 font-mono text-ink-muted">{Math.round(c.progress_percent)}%</span>
-                        </div>
-                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-cream-200">
-                          <div
-                            className="h-full rounded-full bg-green-700"
-                            style={{ width: `${Math.min(100, Math.max(0, c.progress_percent))}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))
-                  )}
+                <div className="shrink-0 text-right">
+                  <p className="font-heading text-base font-bold leading-tight text-green-900 sm:text-lg">{r.total_points} pts</p>
+                  <p className="mt-0.5 text-[10px] font-medium text-ink-muted sm:text-xs">{r.tasks_completed} tasks</p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 shrink-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-cream-200">
-                <div className="text-right">
-                  <p className="font-heading text-xl font-bold text-green-900">
-                    {r.total_points} pts
-                  </p>
-                  <p className="text-xs text-ink-muted font-medium">
-                    {r.tasks_completed} tasks completed
-                  </p>
+              <div className="mt-3 border-t border-cream-200 pt-2.5">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h4 className="text-[10px] font-bold uppercase tracking-wide text-ink-muted">Course progress</h4>
+                  {r.courses.length > 0 && <span className="text-[10px] text-ink-muted">{r.courses.length} courses</span>}
                 </div>
+                {r.courses.length === 0 ? (
+                  <p className="text-xs text-ink-muted">No course enrollments recorded.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {r.courses.map((c) => {
+                      const progress = Math.min(100, Math.max(0, Number(c.progress_percent) || 0));
+                      return (
+                        <div key={c.course_id} className="min-w-0">
+                          <div className="mb-1 flex min-w-0 items-center justify-between gap-2 text-[11px]">
+                            <span className="min-w-0 truncate font-medium text-green-900" title={c.course_title}>{c.course_title}</span>
+                            <span className="shrink-0 font-mono tabular-nums text-ink-muted">
+                              {c.completed_tasks}/{c.total_tasks} · {Math.round(progress)}%
+                            </span>
+                          </div>
+                          <div
+                            role="progressbar"
+                            aria-label={`${c.course_title} progress`}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={Math.round(progress)}
+                            className="h-2 w-full overflow-hidden rounded-full bg-cream-200"
+                          >
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-green-700 to-emerald-500 transition-[width] duration-500"
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </Card>
           ))}

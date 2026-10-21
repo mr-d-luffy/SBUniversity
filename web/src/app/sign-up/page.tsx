@@ -9,7 +9,7 @@ export default function SignUpPage() {
   const [useDemoMode, setUseDemoMode] = useState(false);
 
   return (
-    <div className="grid min-h-dvh lg:grid-cols-2">
+    <div className="page-enter grid min-h-dvh lg:grid-cols-2">
       <aside className="hidden flex-col justify-between bg-green-700 p-12 text-cream-100 lg:flex">
         <Link href="/" className="flex items-center gap-2 font-heading text-lg font-bold text-cream-50">
           <span className="grid h-9 w-9 place-items-center rounded-lg bg-cream-200 text-green-900">

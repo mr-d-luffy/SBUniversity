@@ -113,11 +113,11 @@ For a new Supabase database only, apply the full `supabase_migration.sql` bootst
 
 #### Existing database
 
-Use Alembic (recommended) to apply versioned changes. Do not rerun the full bootstrap over an initialized production database. Alternatively, apply only the matching update section at the end of `supabase_migration.sql`.
+Use Alembic (recommended) to apply versioned changes. Do not rerun the full bootstrap over an initialized production database. Alternatively, apply the matching update section in `supabase_migration.sql`.
 ```bash
 alembic upgrade head
 ```
-The current head is `011_admin_course_management`. New deployments should use Alembic migrations to keep schema history aligned.
+The current head is `012_chat_voice_messages`. New deployments should use Alembic migrations to keep schema history aligned.
 
 ### 3. Seed Sample Data (Development/Staging)
 

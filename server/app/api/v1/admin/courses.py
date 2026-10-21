@@ -72,10 +72,18 @@ async def list_course_teachers(db: AsyncSession = Depends(get_db)):
 async def list_course_students(db: AsyncSession = Depends(get_db)):
     students = await db.scalars(
         select(User)
-        .where(User.role == UserRole.STUDENT, User.status == UserStatus.ACTIVE)
+        .where(User.role == UserRole.STUDENT)
         .order_by(User.full_name)
     )
-    return students.all()
+    return [
+        {
+            "id": student.id,
+            "full_name": student.full_name,
+            "email": student.email,
+            "is_active": student.status == UserStatus.ACTIVE,
+        }
+        for student in students.all()
+    ]
 
 
 @router.patch("/{course_id}/teacher", response_model=AdminCourseResponse)

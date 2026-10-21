@@ -134,11 +134,31 @@ class CommunityChatRepository:
         return list((await self.db.execute(stmt)).scalars().all())
 
     async def list_for_staff(
-        self, kind: CommunityConversationKind
+        self,
+        kind: CommunityConversationKind,
+        staff_id: uuid.UUID,
+        include_student_room: bool = False,
+        include_owned_admin_support: bool = False,
     ) -> List[CommunityConversation]:
+        conversation_filter = (CommunityConversation.kind == kind) | (
+            (CommunityConversation.kind == CommunityConversationKind.PEER_DIRECT)
+            & (
+                (CommunityConversation.peer_one_id == staff_id)
+                | (CommunityConversation.peer_two_id == staff_id)
+            )
+        )
+        if include_student_room:
+            conversation_filter = conversation_filter | (
+                CommunityConversation.room_key == self.ROOM_KEY
+            )
+        if include_owned_admin_support:
+            conversation_filter = conversation_filter | (
+                (CommunityConversation.kind == CommunityConversationKind.ADMIN_SUPPORT)
+                & (CommunityConversation.requester_student_id == staff_id)
+            )
         stmt = (
             select(CommunityConversation)
-            .where(CommunityConversation.kind == kind)
+            .where(conversation_filter)
             .order_by(CommunityConversation.updated_at.desc())
         )
         return list((await self.db.execute(stmt)).scalars().all())
@@ -200,17 +220,31 @@ class CommunityChatRepository:
         )
         return list(reversed((await self.db.execute(stmt)).scalars().all()))
 
+    async def get_message(self, message_id: uuid.UUID) -> Optional[CommunityMessage]:
+        stmt = (
+            select(CommunityMessage)
+            .options(selectinload(CommunityMessage.conversation))
+            .where(CommunityMessage.id == message_id)
+        )
+        return (await self.db.execute(stmt)).scalar_one_or_none()
+
     async def add_message(
         self,
         conversation: CommunityConversation,
         sender_id: uuid.UUID,
         content: str,
+        audio_path: Optional[str] = None,
+        audio_mime_type: Optional[str] = None,
+        audio_size_bytes: Optional[int] = None,
     ) -> CommunityMessage:
         now = datetime.now(timezone.utc)
         message = CommunityMessage(
             conversation_id=conversation.id,
             sender_id=sender_id,
             content=content,
+            audio_path=audio_path,
+            audio_mime_type=audio_mime_type,
+            audio_size_bytes=audio_size_bytes,
             created_at=now,
         )
         conversation.updated_at = now
@@ -226,17 +260,16 @@ class CommunityChatRepository:
         return (await self.db.execute(stmt)).scalar_one()
 
     async def list_active_students(
-        self, current_student_id: uuid.UUID, search: str = ""
+        self, current_user_id: uuid.UUID, search: str = ""
     ) -> List[User]:
         stmt = (
             select(User)
             .where(
-                User.id != current_student_id,
+                User.id != current_user_id,
                 User.role == UserRole.STUDENT,
                 User.status == UserStatus.ACTIVE,
             )
             .order_by(User.full_name.asc())
-            .limit(50)
         )
         if search.strip():
             stmt = stmt.where(User.full_name.ilike(f"%{search.strip()}%"))

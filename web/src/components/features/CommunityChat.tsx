@@ -3,16 +3,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import {
+  ArrowUp,
   ArrowLeft,
   Clock3,
+  LoaderCircle,
+  Mic,
   MessageCircle,
   MessagesSquare,
+  Play,
   Search,
   Send,
   ShieldCheck,
   UsersRound,
+  X,
 } from "lucide-react";
-import { api, getDevAuthToken } from "@/lib/api";
+import { api, getBaseUrl, getDevAuthToken } from "@/lib/api";
 
 type ConversationKind =
   | "student_room"
@@ -41,6 +46,9 @@ interface Message {
   sender_avatar_url?: string | null;
   is_mine: boolean;
   content: string;
+  audio_url?: string | null;
+  audio_mime_type?: string | null;
+  audio_size_bytes?: number | null;
   created_at: string;
 }
 
@@ -83,10 +91,29 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [uploadingAudio, setUploadingAudio] = useState(false);
+  const [loadingAudioIds, setLoadingAudioIds] = useState<Record<string, boolean>>({});
   const [startingConversation, setStartingConversation] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
+  const selectedConversationIdRef = useRef<string | null>(null);
+  const messagesRequestRef = useRef(new Set<string>());
+  const conversationsRequestRef = useRef(false);
+  const conversationRevisionRef = useRef(0);
+  const messageRevisionRef = useRef(new Map<string, number>());
+  const nearMessageBottomRef = useRef(true);
+  const lastMessageIdRef = useRef<string | null>(null);
   const manuallyDismissedSelectionRef = useRef(false);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const sendRecordingRef = useRef(false);
+  const audioUrlsRef = useRef<Record<string, string>>({});
+  const audioLoadingRef = useRef(new Set<string>());
+  const mountedRef = useRef(true);
+  const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
+  selectedConversationIdRef.current = selectedId;
 
   const resolveToken = useCallback(async () => {
     let token = await getToken();
@@ -100,10 +127,23 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
   }, [getToken, role]);
 
   const loadConversations = useCallback(async () => {
+    if (conversationsRequestRef.current) return;
+    conversationsRequestRef.current = true;
+    const requestRevision = conversationRevisionRef.current;
     try {
       const token = await resolveToken();
       const data = await api<Conversation[]>("/community-chat/conversations", token ?? undefined);
-      setConversations(data);
+      if (requestRevision !== conversationRevisionRef.current) return;
+      setConversations((current) => {
+        const unchanged = current.length === data.length && current.every((item, index) => {
+          const next = data[index];
+          return item.id === next.id && item.title === next.title &&
+            item.last_message === next.last_message &&
+            item.last_message_at === next.last_message_at &&
+            item.expires_at === next.expires_at;
+        });
+        return unchanged ? current : data;
+      });
       setSelectedId((current) =>
         current ?? (manuallyDismissedSelectionRef.current ? null : data[0]?.id ?? null),
       );
@@ -111,12 +151,16 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Could not load your chats.");
     } finally {
+      conversationsRequestRef.current = false;
       setLoadingConversations(false);
     }
   }, [resolveToken]);
 
   const loadMessages = useCallback(
     async (conversationId: string, showSpinner = false) => {
+      if (messagesRequestRef.current.has(conversationId)) return;
+      messagesRequestRef.current.add(conversationId);
+      const requestRevision = messageRevisionRef.current.get(conversationId) ?? 0;
       if (showSpinner) setLoadingMessages(true);
       try {
         const token = await resolveToken();
@@ -124,11 +168,39 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
           `/community-chat/conversations/${conversationId}/messages`,
           token ?? undefined,
         );
-        setMessages(data);
+        if (
+          selectedConversationIdRef.current === conversationId &&
+          requestRevision === (messageRevisionRef.current.get(conversationId) ?? 0)
+        ) {
+          setMessages((current) => {
+            const pending = current.filter(
+              (message) => message.conversation_id === conversationId && message.id.startsWith("pending:"),
+            );
+            const nextMessages = pending.length
+              ? [...data, ...pending].sort(
+                  (left, right) => Date.parse(left.created_at) - Date.parse(right.created_at),
+                )
+              : data;
+            const unchanged = current.length === nextMessages.length && current.every((message, index) => {
+              const next = nextMessages[index];
+              return message.id === next.id && message.content === next.content &&
+                message.created_at === next.created_at &&
+                message.sender_name === next.sender_name &&
+                message.sender_avatar_url === next.sender_avatar_url &&
+                message.audio_url === next.audio_url;
+            });
+            return unchanged ? current : nextMessages;
+          });
+        }
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : "Could not load messages.");
+        if (selectedConversationIdRef.current === conversationId) {
+          setError(loadError instanceof Error ? loadError.message : "Could not load messages.");
+        }
       } finally {
-        if (showSpinner) setLoadingMessages(false);
+        messagesRequestRef.current.delete(conversationId);
+        if (selectedConversationIdRef.current === conversationId) {
+          setLoadingMessages(false);
+        }
       }
     },
     [resolveToken],
@@ -136,26 +208,68 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
 
   useEffect(() => {
     void loadConversations();
-    const timer = window.setInterval(() => void loadConversations(), 10000);
-    return () => window.clearInterval(timer);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void loadConversations();
+    };
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadConversations();
+    }, 10000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [loadConversations]);
 
   useEffect(() => {
+    nearMessageBottomRef.current = true;
+    lastMessageIdRef.current = null;
+    setMessages([]);
     if (!selectedId) {
-      setMessages([]);
+      setLoadingMessages(false);
       return;
     }
+    setLoadingMessages(true);
     void loadMessages(selectedId, true);
-    const timer = window.setInterval(() => void loadMessages(selectedId), 3000);
-    return () => window.clearInterval(timer);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void loadMessages(selectedId);
+    };
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadMessages(selectedId);
+    }, 3000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [loadMessages, selectedId]);
 
   useEffect(() => {
-    messageEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const latestMessageId = messages.at(-1)?.id ?? null;
+    if (latestMessageId === lastMessageIdRef.current) return;
+    lastMessageIdRef.current = latestMessageId;
+    if (latestMessageId && nearMessageBottomRef.current) {
+      messageEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
   }, [messages]);
 
+  useEffect(
+    () => {
+      mountedRef.current = true;
+      return () => {
+        mountedRef.current = false;
+        if (recorderRef.current) {
+          recorderRef.current.onstop = null;
+          recorderRef.current.stop();
+        }
+        recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+        Object.values(audioUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
+      };
+    },
+    [],
+  );
+
   useEffect(() => {
-    if (!isStudent) return;
     let active = true;
     const loadStudents = async () => {
       try {
@@ -176,7 +290,7 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
       active = false;
       window.clearTimeout(timer);
     };
-  }, [isStudent, resolveToken, studentSearch]);
+  }, [resolveToken, studentSearch]);
 
   const selectedConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedId) ?? null,
@@ -193,6 +307,7 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
         token ?? undefined,
         { method: "POST" },
       );
+      conversationRevisionRef.current += 1;
       setConversations((current) => [
         conversation,
         ...current.filter((item) => item.id !== conversation.id),
@@ -217,6 +332,7 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
         token ?? undefined,
         { method: "POST" },
       );
+      conversationRevisionRef.current += 1;
       setConversations((current) => [
         conversation,
         ...current.filter((item) => item.id !== conversation.id),
@@ -230,24 +346,201 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
     }
   }
 
+  function acceptSentMessage(message: Message) {
+    conversationRevisionRef.current += 1;
+    const conversationRevision = messageRevisionRef.current.get(message.conversation_id) ?? 0;
+    messageRevisionRef.current.set(message.conversation_id, conversationRevision + 1);
+    if (selectedConversationIdRef.current === message.conversation_id) {
+      setMessages((current) => {
+        const withoutPending = current.filter((item) => !item.id.startsWith("pending:"));
+        if (withoutPending.some((item) => item.id === message.id)) return withoutPending;
+        return [...withoutPending, message].slice(-100);
+      });
+    }
+    setConversations((current) => {
+      const conversation = current.find((item) => item.id === message.conversation_id);
+      if (!conversation) return current;
+      const updated = {
+        ...conversation,
+        last_message: message.content,
+        last_message_at: message.created_at,
+      };
+      return [updated, ...current.filter((item) => item.id !== message.conversation_id)];
+    });
+  }
+
+  async function sendAudioFile(file: File) {
+    if (!selectedId || uploadingAudio) return;
+    setUploadingAudio(true);
+    setError(null);
+    try {
+      const token = await resolveToken();
+      const form = new FormData();
+      form.append("file", file);
+      const sentMessage = await api<Message>(
+        `/community-chat/conversations/${selectedId}/audio`,
+        token ?? undefined,
+        { method: "POST", body: form },
+      );
+      acceptSentMessage(sentMessage);
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Could not send voice message.");
+    } finally {
+      setUploadingAudio(false);
+    }
+  }
+
+  function finishRecording(shouldSend: boolean) {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state === "inactive") return;
+    sendRecordingRef.current = shouldSend;
+    recorder.stop();
+  }
+
+  async function toggleRecording() {
+    if (recording) {
+      finishRecording(true);
+      return;
+    }
+    if (
+      !selectedId ||
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      setError("Audio recording is not supported in this browser.");
+      return;
+    }
+    try {
+      setError(null);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordingStreamRef.current = stream;
+      const preferredType = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+        "audio/ogg",
+      ].find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(
+        stream,
+        preferredType ? { mimeType: preferredType } : undefined,
+      );
+      recorderRef.current = recorder;
+      recordingChunksRef.current = [];
+      sendRecordingRef.current = false;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const shouldSend = sendRecordingRef.current;
+        sendRecordingRef.current = false;
+        const blob = new Blob(recordingChunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        });
+        stream.getTracks().forEach((track) => track.stop());
+        recordingStreamRef.current = null;
+        recorderRef.current = null;
+        setRecording(false);
+        if (!shouldSend) {
+          recordingChunksRef.current = [];
+          return;
+        }
+        if (!blob.size) {
+          setError("The recording was empty. Try recording again.");
+          return;
+        }
+        const extension = blob.type.includes("mp4")
+          ? "m4a"
+          : blob.type.includes("ogg")
+            ? "ogg"
+            : "webm";
+        void sendAudioFile(new File([blob], `voice-message.${extension}`, { type: blob.type }));
+      };
+      recorder.start();
+      setRecording(true);
+    } catch (recordError) {
+      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recordingStreamRef.current = null;
+      setError(
+        recordError instanceof Error
+          ? recordError.message
+          : "Microphone access was denied or unavailable.",
+      );
+    }
+  }
+
+  async function loadAudioMessage(message: Message) {
+    if (
+      !message.audio_url ||
+      audioUrlsRef.current[message.id] ||
+      audioLoadingRef.current.has(message.id)
+    ) {
+      return;
+    }
+    audioLoadingRef.current.add(message.id);
+    setLoadingAudioIds((current) => ({ ...current, [message.id]: true }));
+    try {
+      const token = await resolveToken();
+      const response = await fetch(`${getBaseUrl()}${message.audio_url}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!response.ok) throw new Error("Could not load this voice message.");
+      const url = URL.createObjectURL(await response.blob());
+      if (mountedRef.current) {
+        audioUrlsRef.current[message.id] = url;
+        setAudioUrls((current) => ({ ...current, [message.id]: url }));
+      } else {
+        URL.revokeObjectURL(url);
+      }
+    } catch (audioError) {
+      if (mountedRef.current) {
+        setError(audioError instanceof Error ? audioError.message : "Could not load voice message.");
+      }
+    } finally {
+      audioLoadingRef.current.delete(message.id);
+      if (mountedRef.current) {
+        setLoadingAudioIds((current) => ({ ...current, [message.id]: false }));
+      }
+    }
+  }
+
   async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedId || !messageText.trim() || sending) return;
+    const conversationId = selectedId;
+    const content = messageText.trim();
+    const pendingId = `pending:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    const pendingMessage: Message = {
+      id: pendingId,
+      conversation_id: conversationId,
+      sender_id: "current-user",
+      sender_name: "You",
+      sender_role: role,
+      is_mine: true,
+      content,
+      created_at: new Date().toISOString(),
+    };
+    const conversationRevision = messageRevisionRef.current.get(conversationId) ?? 0;
+    messageRevisionRef.current.set(conversationId, conversationRevision + 1);
+    setMessages((current) => [...current, pendingMessage].slice(-100));
+    setMessageText("");
     setSending(true);
     setError(null);
     try {
       const token = await resolveToken();
-      await api<Message>(
-        `/community-chat/conversations/${selectedId}/messages`,
+      const sentMessage = await api<Message>(
+        `/community-chat/conversations/${conversationId}/messages`,
         token ?? undefined,
         {
           method: "POST",
-          body: JSON.stringify({ content: messageText }),
+          body: JSON.stringify({ content }),
         },
       );
-      setMessageText("");
-      await Promise.all([loadMessages(selectedId), loadConversations()]);
+      acceptSentMessage(sentMessage);
     } catch (sendError) {
+      if (selectedConversationIdRef.current === conversationId) {
+        setMessages((current) => current.filter((message) => message.id !== pendingId));
+        setMessageText((current) => current || content);
+      }
       setError(sendError instanceof Error ? sendError.message : "Could not send your message.");
     } finally {
       setSending(false);
@@ -271,11 +564,15 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
               <div>
                 <h1 className="font-heading text-lg font-bold text-green-900">Community Chat</h1>
                 <p className="text-xs text-ink-muted">
-                  {isStudent ? "Connect with your university" : "Support inbox"}
+                  {isStudent
+                    ? "Connect with your university"
+                    : role === "teacher"
+                      ? "Student community · student chats"
+                      : "Support inbox · student chats"}
                 </p>
               </div>
             </div>
-            {isStudent && (
+            {(isStudent || role === "teacher") && (
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -285,14 +582,16 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
                 >
                   <ShieldCheck size={15} /> Admin
                 </button>
-                <button
-                  type="button"
-                  disabled={startingConversation}
-                  onClick={() => void startStaffChat("teacher")}
-                  className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-cream-300 bg-cream-50 px-2 text-xs font-semibold text-green-900 transition hover:bg-cream-100 disabled:opacity-50"
-                >
-                  <UsersRound size={15} /> Teacher
-                </button>
+                {isStudent && (
+                  <button
+                    type="button"
+                    disabled={startingConversation}
+                    onClick={() => void startStaffChat("teacher")}
+                    className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-cream-300 bg-cream-50 px-2 text-xs font-semibold text-green-900 transition hover:bg-cream-100 disabled:opacity-50"
+                  >
+                    <UsersRound size={15} /> Teacher
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -344,8 +643,7 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
               ))}
             </div>
 
-            {isStudent && (
-              <div className="border-t border-cream-200 p-3">
+            <div className="border-t border-cream-200 p-3">
                 <label className="relative block">
                   <Search
                     size={15}
@@ -354,8 +652,8 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
                   <input
                     value={studentSearch}
                     onChange={(event) => setStudentSearch(event.target.value)}
-                    placeholder="Find a student"
-                    aria-label="Find a student to chat with"
+                    placeholder={isStudent ? "Find a student" : "Start a chat with a student"}
+                    aria-label={isStudent ? "Find a student to chat with" : "Find a student to message"}
                     className="h-11 w-full rounded-xl border border-cream-300 bg-white pl-9 pr-3 text-sm text-ink"
                   />
                 </label>
@@ -388,8 +686,7 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
                     )}
                   </div>
                 )}
-              </div>
-            )}
+            </div>
           </div>
         </aside>
 
@@ -427,7 +724,7 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
                   </h2>
                   <p className="text-[11px] text-ink-muted">
                     {selectedConversation.is_shared_room
-                      ? "Shared student room"
+                      ? "Shared university community room"
                       : selectedConversation.kind === "admin_support"
                         ? "Private conversation with the admin team"
                         : selectedConversation.kind === "teacher_support"
@@ -441,6 +738,11 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
               </header>
 
               <div
+                onScroll={(event) => {
+                  const list = event.currentTarget;
+                  nearMessageBottomRef.current =
+                    list.scrollHeight - list.scrollTop - list.clientHeight < 120;
+                }}
                 className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-cream-50/60 px-3 py-4 sm:px-5"
                 aria-live="polite"
                 aria-label="Messages"
@@ -465,7 +767,7 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
                   return (
                     <div
                       key={message.id}
-                      className={`flex w-full ${ownMessage ? "justify-end" : "justify-start"}`}
+                      className={`chat-message-enter flex w-full ${ownMessage ? "justify-end" : "justify-start"}`}
                     >
                       <article
                         className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 shadow-sm sm:max-w-[75%] ${
@@ -482,9 +784,36 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
                             </span>
                           </p>
                         )}
-                        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                          {message.content}
-                        </p>
+                        {message.audio_url && (
+                          audioUrls[message.id] ? (
+                            <audio
+                              controls
+                              preload="none"
+                              src={audioUrls[message.id]}
+                              aria-label={`Voice message from ${message.sender_name}`}
+                              className="my-1 h-10 max-w-full"
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => void loadAudioMessage(message)}
+                              disabled={loadingAudioIds[message.id]}
+                              className="my-1 inline-flex min-h-10 items-center gap-2 rounded-full bg-green-600/15 px-3 text-sm font-semibold text-current transition hover:bg-green-600/25 disabled:opacity-60"
+                            >
+                              {loadingAudioIds[message.id] ? (
+                                <LoaderCircle size={16} className="animate-spin" />
+                              ) : (
+                                <Play size={16} fill="currentColor" />
+                              )}
+                              {loadingAudioIds[message.id] ? "Loading audio…" : "Load voice message"}
+                            </button>
+                          )
+                        )}
+                        {message.content !== "Voice message" && (
+                          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                            {message.content}
+                          </p>
+                        )}
                         <time
                           dateTime={message.created_at}
                           className={`mt-1 block text-right text-[10px] ${
@@ -509,35 +838,97 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
                     {error}
                   </p>
                 )}
-                <div className="flex items-end gap-2">
-                  <textarea
-                    value={messageText}
-                    onChange={(event) => setMessageText(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        event.currentTarget.form?.requestSubmit();
-                      }
-                    }}
-                    rows={1}
-                    maxLength={4000}
-                    placeholder="Write a message…"
-                    aria-label="Message"
-                    className="max-h-32 min-h-11 min-w-0 flex-1 resize-y rounded-xl border border-cream-300 bg-cream-50 px-3.5 py-3 text-sm text-ink"
-                  />
-                  <button
-                    type="submit"
-                    disabled={sending || !messageText.trim()}
-                    aria-label="Send message"
-                    className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-bordo-700 text-white transition hover:bg-bordo-500 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Send size={17} />
-                  </button>
-                </div>
-                <p className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-ink-muted">
-                  <span>Enter to send · Shift+Enter for a new line</span>
-                  <span>{messageText.length}/4000</span>
-                </p>
+                {recording ? (
+                  <div className="flex justify-center">
+                    <div className="flex min-h-[4.5rem] w-full max-w-md items-center gap-4 rounded-full border border-sky-200 bg-gradient-to-r from-sky-200 via-cyan-300 to-sky-200 px-3 py-2 shadow-inner shadow-sky-400/20 sm:px-5">
+                      <button
+                        type="button"
+                        onClick={() => finishRecording(false)}
+                        aria-label="Cancel voice recording"
+                        className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-black text-white shadow-sm transition hover:bg-slate-800"
+                      >
+                        <X size={25} strokeWidth={2.5} />
+                      </button>
+                      <div
+                        className="flex min-w-0 flex-1 items-center justify-center gap-1"
+                        role="img"
+                        aria-label="Recording voice message"
+                      >
+                        {[10, 16, 23, 13, 30, 38, 24, 16, 26, 12, 20, 9, 15].map(
+                          (height, index) => (
+                            <span
+                              key={index}
+                              className="w-1 shrink-0 animate-pulse rounded-full bg-slate-900 sm:w-1.5"
+                              style={{
+                                height: `${height}px`,
+                                animationDelay: `${index * 65}ms`,
+                                animationDuration: "700ms",
+                              }}
+                            />
+                          ),
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => finishRecording(true)}
+                        aria-label="Send voice recording"
+                        className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white/70 text-slate-900 shadow-sm transition hover:bg-white"
+                      >
+                        <ArrowUp size={25} strokeWidth={2.5} />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-end gap-2">
+                      <textarea
+                        value={messageText}
+                        onChange={(event) => setMessageText(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" && !event.shiftKey) {
+                            event.preventDefault();
+                            event.currentTarget.form?.requestSubmit();
+                          }
+                        }}
+                        rows={1}
+                        maxLength={4000}
+                        placeholder="Write a message…"
+                        aria-label="Message"
+                        className="max-h-32 min-h-11 min-w-0 flex-1 resize-y rounded-xl border border-cream-300 bg-cream-50 px-3.5 py-3 text-sm text-ink"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void toggleRecording()}
+                        disabled={sending || uploadingAudio}
+                        aria-label="Record voice message"
+                        title="Record voice message"
+                        className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-cream-300 bg-white text-green-800 transition hover:bg-cream-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {uploadingAudio ? (
+                          <LoaderCircle size={17} className="animate-spin" />
+                        ) : (
+                          <Mic size={17} />
+                        )}
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={sending || !messageText.trim()}
+                        aria-label="Send message"
+                        className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-bordo-700 text-white transition hover:bg-bordo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Send size={17} />
+                      </button>
+                    </div>
+                    <p className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-ink-muted">
+                      <span>
+                        {uploadingAudio
+                          ? "Sending voice message…"
+                          : "Enter to send · Shift+Enter for a new line · Mic to record"}
+                      </span>
+                      <span>{messageText.length}/4000</span>
+                    </p>
+                  </>
+                )}
               </form>
             </>
           ) : (

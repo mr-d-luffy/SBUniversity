@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/Button";
 
 export default function NotFound() {
   return (
-    <div className="grid min-h-dvh place-items-center px-4 text-center">
+    <div className="page-enter grid min-h-dvh place-items-center px-4 text-center">
       <div>
         <p className="font-heading text-6xl font-bold text-green-700">404</p>
         <h1 className="mt-2 text-xl">We couldn&apos;t find that page</h1>

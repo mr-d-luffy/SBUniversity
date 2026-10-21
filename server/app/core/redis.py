@@ -131,6 +131,7 @@ async def get_redis_client():
             encoding="utf-8",
             decode_responses=True,
             socket_connect_timeout=2.0,
+            socket_timeout=2.0,
         )
         await client.ping()
         logger.info("Connected to Redis at %s", settings.REDIS_URL)

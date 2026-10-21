@@ -91,6 +91,7 @@ class AdminStudentResponse(BaseModel):
     id: uuid.UUID
     full_name: str
     email: str
+    is_active: bool
 
 
 class AdminCourseTeacherUpdate(BaseModel):

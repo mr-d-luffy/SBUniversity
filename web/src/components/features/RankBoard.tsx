@@ -200,6 +200,12 @@ export function RankBoard({
   }, [fetchData]);
 
   const top = students.slice(0, 4);
+  const getStudentAvatar = (student: RankedStudent) => {
+    const signedInStudentId = meId || myRank?.student_id;
+    return student.student_id === signedInStudentId
+      ? user?.imageUrl || student.avatar_url
+      : student.avatar_url;
+  };
 
   return (
     <div className="space-y-6">
@@ -255,7 +261,9 @@ export function RankBoard({
         <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 lg:grid-cols-4 lg:items-end" aria-live="polite">
           {top.map((s, i) => {
             const isRank1 = i === 0;
+            const podiumRank = i + 1;
             const tier = RANK_TIERS[i] || RANK_TIERS[3];
+            const avatarUrl = getStudentAvatar(s);
 
             return (
               <Card
@@ -292,10 +300,10 @@ export function RankBoard({
 
                 {/* Student Avatar / Initials */}
                 <div className="mx-auto mb-2">
-                  {s.avatar_url ? (
+                  {avatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={s.avatar_url}
+                      src={avatarUrl}
                       alt={s.name}
                       className="mx-auto h-12 w-12 rounded-full object-cover ring-2 ring-cream-300 shadow-sm"
                     />
@@ -314,7 +322,7 @@ export function RankBoard({
                 </div>
 
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
-                  Rank #{s.rank || i + 1}
+                  Rank #{podiumRank}
                 </p>
                 <h3 className="break-words font-heading text-base font-bold text-green-900">
                   {s.name}
@@ -375,8 +383,9 @@ export function RankBoard({
           </div>
         ) : (
           students.map((s, idx) => {
-            const rankNum = s.rank || idx + 1;
+            const rankNum = idx + 1;
             const isMe = s.student_id === myRank?.student_id;
+            const avatarUrl = getStudentAvatar(s);
             return (
               <Card
                 key={s.student_id || idx}
@@ -399,9 +408,9 @@ export function RankBoard({
                 >
                   {rankNum}
                 </span>
-                {s.avatar_url ? (
+                {avatarUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={s.avatar_url} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
+                  <img src={avatarUrl} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
                 ) : null}
                 <div className="min-w-0 flex-1">
                   <p className="break-words text-sm font-semibold text-green-900">
@@ -438,8 +447,9 @@ export function RankBoard({
               </tr>
             ) : (
               students.map((s, idx) => {
-                const rankNum = s.rank || idx + 1;
+                const rankNum = idx + 1;
                 const isMe = s.student_id === myRank?.student_id;
+                const avatarUrl = getStudentAvatar(s);
 
                 return (
                   <tr
@@ -469,10 +479,10 @@ export function RankBoard({
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
-                        {s.avatar_url ? (
+                        {avatarUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
-                            src={s.avatar_url}
+                            src={avatarUrl}
                             alt=""
                             className="h-6 w-6 rounded-full object-cover"
                           />

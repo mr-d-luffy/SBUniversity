@@ -2,7 +2,7 @@ import clsx from "clsx";
 import type { HTMLAttributes } from "react";
 
 export function Card({ className, ...rest }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={clsx("rounded-xl border border-cream-300 bg-white p-5 shadow-sm", className)} {...rest} />;
+  return <div className={clsx("motion-card rounded-xl border border-cream-300 bg-white p-5 shadow-sm", className)} {...rest} />;
 }
 
 export function StatCard({ value, label, hint }: { value: string | number; label: string; hint?: string }) {

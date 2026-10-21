@@ -452,9 +452,7 @@ export function LiveWhiteboard({ role }: { role: Role }) {
     if (!context) return;
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.clearRect(0, 0, bounds.width, bounds.height);
-    if (activeStroke) {
-      drawStroke(context, activeStroke, bounds.width, bounds.height);
-    }
+    if (activeStroke) drawStroke(context, activeStroke, bounds.width, bounds.height);
   }, [activeStroke]);
 
   useEffect(() => {
@@ -583,9 +581,6 @@ export function LiveWhiteboard({ role }: { role: Role }) {
     const point = pointFromEvent(event);
     if (previous.tool === "pen" || previous.tool === "eraser") {
       previous.points.push(point);
-      if (previous.points.length > 500) {
-        previous.points.splice(1, previous.points.length - 500);
-      }
     } else {
       previous.points[1] = point;
     }
@@ -593,9 +588,7 @@ export function LiveWhiteboard({ role }: { role: Role }) {
       previewFrameRef.current = window.requestAnimationFrame(() => {
         previewFrameRef.current = null;
         const current = strokeRef.current;
-        if (current) {
-          setActiveStroke({ ...current, points: [...current.points] });
-        }
+        if (current) setActiveStroke({ ...current, points: [...current.points] });
       });
     }
   }
@@ -839,17 +832,18 @@ export function LiveWhiteboard({ role }: { role: Role }) {
                   <p className="text-xs text-slate-500">{canControlBoard ? "You’re hosting · students have read-only access" : "Live with your class · board is read-only"}</p>
                 </div>
               </div>
-              {canControlBoard && (
-                <button
-                  type="button"
-                  onClick={() => void endSession()}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
-                >
-                  <X size={15} /> End class
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {canControlBoard && (
+                  <button
+                    type="button"
+                    onClick={() => void endSession()}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+                  >
+                    <X size={15} /> End class
+                  </button>
+                )}
+              </div>
             </div>
-
             {canControlBoard && (
               <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/80 px-3 py-2.5 sm:px-4">
                 <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1" aria-label="Drawing tools">

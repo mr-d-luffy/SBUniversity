@@ -20,8 +20,6 @@ from app.schemas.whiteboard import (
 from app.services.whiteboard_service import WhiteboardService
 
 router = APIRouter(prefix="/whiteboard", tags=["Live Whiteboard"])
-
-
 def get_service(db: AsyncSession) -> WhiteboardService:
     return WhiteboardService(WhiteboardRepository(db))
 

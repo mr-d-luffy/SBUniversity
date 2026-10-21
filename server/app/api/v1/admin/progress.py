@@ -1,13 +1,20 @@
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.core.deps import get_current_user, require_role
 from app.db.models.course import Course, Enrollment
 from app.db.models.exam import Exam
-from app.db.models.task import CompletionStatus, TaskCompletion
+from app.db.models.task import (
+    CompletionStatus,
+    Task,
+    TaskAssignmentScope,
+    TaskCompletion,
+    TaskRecipient,
+    TaskStatus,
+)
 from app.db.models.user import StudentProfile, User, UserRole
 from app.db.session import get_db
 from app.schemas.certificate import CertificateResponse, RevokeCertificateRequest
@@ -46,19 +53,84 @@ async def get_students_progress(
     res = await db.execute(stmt)
     students = list(res.scalars().all())
 
+    student_ids = [student.id for student in students]
+    task_progress: dict[tuple[uuid.UUID, uuid.UUID], tuple[int, int]] = {}
+    if student_ids:
+        progress_stmt = (
+            select(
+                Enrollment.student_id,
+                Enrollment.course_id,
+                func.count(Task.id),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (TaskCompletion.status == CompletionStatus.COMPLETED, 1),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ),
+            )
+            .join(
+                Task,
+                and_(
+                    Task.course_id == Enrollment.course_id,
+                    Task.status == TaskStatus.ACTIVE,
+                ),
+            )
+            .outerjoin(
+                TaskRecipient,
+                and_(
+                    TaskRecipient.task_id == Task.id,
+                    TaskRecipient.student_id == Enrollment.student_id,
+                ),
+            )
+            .outerjoin(
+                TaskCompletion,
+                and_(
+                    TaskCompletion.task_id == Task.id,
+                    TaskCompletion.student_id == Enrollment.student_id,
+                ),
+            )
+            .where(
+                Enrollment.student_id.in_(student_ids),
+                or_(
+                    Task.assignment_scope == TaskAssignmentScope.ALL_STUDENTS,
+                    TaskRecipient.student_id == Enrollment.student_id,
+                ),
+            )
+            .group_by(Enrollment.student_id, Enrollment.course_id)
+        )
+        progress_rows = (await db.execute(progress_stmt)).all()
+        task_progress = {
+            (student_id, course_id): (int(completed_count), int(total_count))
+            for student_id, course_id, total_count, completed_count in progress_rows
+        }
+
     items = []
     task_service = TaskService(db)
     for s in students:
         pts = await task_service.get_student_points(s.id)
-        courses_data = [
-            {
-                "course_id": str(e.course_id),
-                "course_title": e.course.title if e.course else "Course",
-                "progress_percent": float(e.progress_percent),
-                "status": e.status.value,
-            }
-            for e in s.enrollments
-        ]
+        courses_data = []
+        for enrollment in s.enrollments:
+            completed_count, total_count = task_progress.get(
+                (s.id, enrollment.course_id), (0, 0)
+            )
+            progress_percent = (
+                round((completed_count / total_count) * 100, 2)
+                if total_count
+                else 0.0
+            )
+            courses_data.append(
+                {
+                    "course_id": str(enrollment.course_id),
+                    "course_title": enrollment.course.title if enrollment.course else "Course",
+                    "progress_percent": progress_percent,
+                    "completed_tasks": completed_count,
+                    "total_tasks": total_count,
+                    "status": enrollment.status.value,
+                }
+            )
         items.append({
             "student_id": str(s.id),
             "name": s.full_name,

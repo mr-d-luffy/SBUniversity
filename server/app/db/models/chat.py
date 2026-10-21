@@ -122,6 +122,11 @@ class CommunityMessage(Base, UUIDPrimaryKeyMixin):
             "length(content) > 0 AND length(content) <= 4000",
             name="ck_community_message_content_length",
         ),
+        CheckConstraint(
+            "audio_size_bytes IS NULL OR "
+            "(audio_size_bytes > 0 AND audio_size_bytes <= 26214400)",
+            name="ck_community_message_audio_size",
+        ),
     )
 
     conversation_id: Mapped[uuid.UUID] = mapped_column(
@@ -134,6 +139,9 @@ class CommunityMessage(Base, UUIDPrimaryKeyMixin):
         Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    audio_path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    audio_mime_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    audio_size_bytes: Mapped[Optional[int]] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )

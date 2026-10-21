@@ -32,6 +32,7 @@ interface StudentOption {
   id: string;
   full_name: string;
   email: string;
+  is_active: boolean;
 }
 
 function defaultCourseCode() {
@@ -114,7 +115,7 @@ export function AdminCourses() {
     setDescription(course.description ?? "");
     const assignedTeachers = course.teacher_ids.filter((id) => teachers.some((teacher) => teacher.id === id));
     setTeacherIds(assignedTeachers.length ? assignedTeachers : teachers[0] ? [teachers[0].id] : []);
-    setStudentIds([]);
+    setStudentIds(course.student_ids);
     setIsPublished(course.is_published);
     setEnrollAll(false);
     setStudentSearch("");
@@ -352,18 +353,44 @@ export function AdminCourses() {
                 </span>
               </label>
               <fieldset className="rounded-xl border border-cream-300 p-3">
-                <legend className="px-1 text-sm font-semibold text-green-900">Add students</legend>
+                <legend className="px-1 text-sm font-semibold text-green-900">
+                  {editingCourse ? "Manage students" : "Add students"}
+                </legend>
                 {editingCourse && (
-                  <p className="mb-2 text-xs text-ink-muted">
-                    {editingCourse.enrolled_students} students are currently enrolled. Existing enrollments are retained; selected students are added.
-                  </p>
+                  <>
+                    <p className="mb-2 text-xs text-ink-muted">
+                      {editingCourse.enrolled_students} students are currently enrolled. Removing a student keeps their course progress.
+                    </p>
+                    {studentIds.length > 0 && (
+                      <div className="mb-3 space-y-1">
+                        <p className="text-xs font-semibold text-green-900">Currently enrolled</p>
+                        {studentIds.map((studentId) => {
+                          const student = students.find((item) => item.id === studentId);
+                          if (!student) return null;
+                          return (
+                            <div key={student.id} className="flex min-h-10 items-center justify-between gap-2 rounded-lg bg-green-50 px-2 text-sm text-ink">
+                              <span className="min-w-0 truncate">{student.full_name} · {student.email}{!student.is_active && " · Inactive account"}</span>
+                              <button
+                                type="button"
+                                onClick={() => setStudentIds((current) => current.filter((id) => id !== student.id))}
+                                aria-label={`Remove ${student.full_name} from this course`}
+                                className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-danger hover:bg-red-50"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
                 )}
                 <input
                   type="search"
                   value={studentSearch}
                   onChange={(event) => setStudentSearch(event.target.value)}
                   placeholder="Search students"
-                  aria-label="Search students to enroll"
+                  aria-label={editingCourse ? "Search students to manage" : "Search students to enroll"}
                   className="h-10 w-full rounded-lg border border-cream-300 px-3 text-sm"
                 />
                 <div className="mt-2 max-h-44 space-y-1 overflow-y-auto">
@@ -374,14 +401,15 @@ export function AdminCourses() {
                         <input
                           type="checkbox"
                           checked={studentIds.includes(student.id)}
+                          disabled={!student.is_active && !studentIds.includes(student.id)}
                           onChange={() => setStudentIds((current) => current.includes(student.id)
                             ? current.filter((id) => id !== student.id)
                             : [...current, student.id])}
                         />
-                        <span className="min-w-0 truncate">{student.full_name} · {student.email}</span>
+                        <span className="min-w-0 truncate">{student.full_name} · {student.email}{!student.is_active && " · Inactive account"}</span>
                       </label>
                     ))}
-                  {students.length === 0 && <p className="p-2 text-xs text-ink-muted">No active students available.</p>}
+                  {students.length === 0 && <p className="p-2 text-xs text-ink-muted">No student accounts available.</p>}
                 </div>
               </fieldset>
               <label className="flex items-start gap-3 rounded-xl border border-cream-300 p-4 text-sm text-ink">
@@ -395,7 +423,7 @@ export function AdminCourses() {
                   <span className="block font-semibold text-green-900">Enroll all active students</span>
                   <span className="mt-1 block text-xs text-ink-muted">
                     {editingCourse
-                      ? "Enroll every active student in addition to the specifically selected students. Existing enrollments are retained."
+                      ? "Keep every active student enrolled. Clear this to manage the roster with the student selections above."
                       : "Selected by default. Clear this to enroll only the specifically selected students."}
                   </span>
                 </span>

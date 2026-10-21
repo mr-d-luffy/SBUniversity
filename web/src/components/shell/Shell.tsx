@@ -140,7 +140,7 @@ export function Shell({ role, name, demo, children }: { role: Role; name: string
             <Icon
               size={19}
               strokeWidth={active ? 2.25 : 1.75}
-              className={clsx(active ? "text-green-900" : "text-cream-200/90 group-hover:text-cream-100")}
+              className={clsx("transition-transform duration-150 group-hover:scale-110", active ? "text-green-900" : "text-cream-200/90 group-hover:text-cream-100")}
               aria-hidden
             />
             <span className={clsx("truncate", collapsed && "lg:hidden")}>{label}</span>
@@ -292,7 +292,9 @@ export function Shell({ role, name, demo, children }: { role: Role; name: string
 
         {/* Main Content Area */}
         <main className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
-          {children}
+          <div key={path} className="page-enter">
+            {children}
+          </div>
         </main>
 
         {/* Floating Aarsh AI Assistant accessible on all pages */}

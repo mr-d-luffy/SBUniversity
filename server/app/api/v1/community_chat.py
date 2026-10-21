@@ -1,6 +1,7 @@
 import uuid
 from typing import List
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_user
 from app.core.rate_limit import RateLimiter
@@ -16,6 +17,16 @@ from app.schemas.chat import (
 from app.services.community_chat_service import CommunityChatService
 
 router = APIRouter(prefix="/community-chat", tags=["Community Chat"])
+MAX_AUDIO_BYTES = 25 * 1024 * 1024
+AUDIO_TYPES = {
+    "audio/webm": "webm",
+    "audio/ogg": "ogg",
+    "audio/mp4": "m4a",
+    "audio/mpeg": "mp3",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/aac": "aac",
+}
 
 
 def get_service(db: AsyncSession) -> CommunityChatService:
@@ -90,4 +101,49 @@ async def send_message(
 ):
     return await get_service(db).send_message(
         current_user, conversation_id, body.content
+    )
+
+
+@router.post(
+    "/conversations/{conversation_id}/audio",
+    response_model=CommunityMessageResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(RateLimiter(requests_limit=10, window_seconds=60))],
+)
+async def send_audio_message(
+    conversation_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    media_type = (file.content_type or "").split(";", maxsplit=1)[0].strip().lower()
+    extension = AUDIO_TYPES.get(media_type)
+    if extension is None:
+        raise HTTPException(
+            status_code=415,
+            detail="Unsupported audio format. Use WebM, Ogg, MP4, MP3, WAV, or AAC.",
+        )
+    contents = await file.read(MAX_AUDIO_BYTES + 1)
+    await file.close()
+    if len(contents) > MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=413, detail="Voice messages cannot exceed 25 MB")
+    return await get_service(db).send_audio(
+        current_user, conversation_id, contents, media_type, extension
+    )
+
+
+@router.get("/messages/{message_id}/audio")
+async def get_audio_message(
+    message_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    contents, media_type = await get_service(db).get_audio(current_user, message_id)
+    return Response(
+        content=contents,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
     )

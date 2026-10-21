@@ -3,11 +3,15 @@ import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "");
+const metadataBaseUrl =
+  siteUrl ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 const siteName = "SiliconBrains University";
 const siteDescription = "SiliconBrains University brings online exams, course tasks, student progress, live rankings and verifiable academic credentials together in one learning platform.";
 
 export const metadata: Metadata = {
-  ...(siteUrl ? { metadataBase: new URL(siteUrl), alternates: { canonical: "/" } } : {}),
+  metadataBase: new URL(metadataBaseUrl),
+  ...(siteUrl ? { alternates: { canonical: "/" } } : {}),
   title: { default: "SiliconBrains University | Online Learning & Exams", template: "%s | SiliconBrains University" },
   description: siteDescription,
   applicationName: siteName,

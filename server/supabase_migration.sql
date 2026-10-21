@@ -537,9 +537,16 @@ CREATE TABLE IF NOT EXISTS public.community_messages (
         REFERENCES public.community_conversations(id) ON DELETE CASCADE,
     sender_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
+    audio_path VARCHAR(512) NULL,
+    audio_mime_type VARCHAR(100) NULL,
+    audio_size_bytes INTEGER NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT ck_community_message_content_length
-        CHECK (length(content) > 0 AND length(content) <= 4000)
+        CHECK (length(content) > 0 AND length(content) <= 4000),
+    CONSTRAINT ck_community_message_audio_size CHECK (
+        audio_size_bytes IS NULL OR
+        (audio_size_bytes > 0 AND audio_size_bytes <= 26214400)
+    )
 );
 
 CREATE INDEX IF NOT EXISTS idx_community_messages_conversation
@@ -724,6 +731,21 @@ ALTER TABLE public.whiteboard_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.whiteboard_strokes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.whiteboard_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+
+-- 8. COMMUNITY CHAT VOICE MESSAGE STORAGE
+ALTER TABLE public.community_messages
+    ADD COLUMN IF NOT EXISTS audio_path VARCHAR(512) NULL,
+    ADD COLUMN IF NOT EXISTS audio_mime_type VARCHAR(100) NULL,
+    ADD COLUMN IF NOT EXISTS audio_size_bytes INTEGER NULL;
+DO $$
+BEGIN
+    ALTER TABLE public.community_messages
+        ADD CONSTRAINT ck_community_message_audio_size CHECK (
+            audio_size_bytes IS NULL OR
+            (audio_size_bytes > 0 AND audio_size_bytes <= 26214400)
+        );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- 6. STORAGE BUCKET INITIALIZATION (Supabase Storage)
 INSERT INTO storage.buckets (id, name, public)

@@ -20,6 +20,6 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export function Button({ variant = "secondary", size = "md", href, className, children, ...rest }: Props) {
-  const cls = clsx("inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none", styles[variant], sizes[size], className);
+  const cls = clsx("motion-control inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none", styles[variant], sizes[size], className);
   return href ? <Link href={href} className={cls}>{children}</Link> : <button className={cls} {...rest}>{children}</button>;
 }
