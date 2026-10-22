@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+import { headers } from "next/headers";
 import "./globals.css";
+
+export const dynamic = "force-dynamic";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "");
 const metadataBaseUrl =
@@ -35,7 +38,8 @@ export const metadata: Metadata = {
 };
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#FDF6EE" };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   const body = (
     <html lang="en">
       <head>
@@ -58,5 +62,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>{children}</body>
     </html>
   );
-  return process.env.NEXT_PUBLIC_DEMO_MODE === "true" ? body : <ClerkProvider>{body}</ClerkProvider>;
+  return process.env.NEXT_PUBLIC_DEMO_MODE === "true"
+    ? body
+    : <ClerkProvider dynamic nonce={nonce}>{body}</ClerkProvider>;
 }

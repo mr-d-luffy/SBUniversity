@@ -27,14 +27,15 @@ function createCsp(nonce: string) {
   }
   const directives = [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' https://*.clerk.accounts.dev https://*.clerk.com https://challenges.cloudflare.com https://www.youtube.com https://s.ytimg.com`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://*.clerk.accounts.dev https://*.clerk.com https://challenges.cloudflare.com https://www.youtube.com https://s.ytimg.com`,
     `style-src 'self' 'nonce-${nonce}' https://fonts.googleapis.com`,
     "style-src-attr 'unsafe-inline'",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data: https://fonts.gstatic.com",
-    `connect-src 'self' ${apiOrigin} https://*.clerk.accounts.dev https://*.clerk.com https://api.clerk.com https://challenges.cloudflare.com https://www.youtube.com https://*.googleapis.com https://*.googlevideo.com wss:`,
+    `connect-src 'self' ${apiOrigin} https://*.clerk.accounts.dev https://*.clerk.com https://*.client.protect.clerk.com:* https://api.clerk.com https://clerk-telemetry.com https://*.clerk-telemetry.com https://challenges.cloudflare.com https://www.youtube.com https://*.googleapis.com https://*.googlevideo.com wss:`,
     "frame-src https://www.youtube.com https://www.youtube-nocookie.com https://*.clerk.accounts.dev https://*.clerk.com https://challenges.cloudflare.com",
     "form-action 'self' https://*.clerk.accounts.dev https://*.clerk.com",
+    "worker-src 'self' blob:",
     "base-uri 'self'",
     "object-src 'none'",
     "frame-ancestors 'none'",
