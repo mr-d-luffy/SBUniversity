@@ -171,6 +171,15 @@ async def close_exam(
     service = ExamService(db)
     return await service.close_exam(exam_id, current_user)
 
+@router.delete("/exams/{exam_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_exam(
+    exam_id: uuid.UUID,
+    current_user: User = Depends(require_role([UserRole.TEACHER, UserRole.ADMIN])),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ExamService(db)
+    await service.delete_exam(exam_id, current_user)
+
 
 @router.post("/exams/{exam_id}/questions", response_model=QuestionResponse)
 async def add_exam_question(

@@ -113,11 +113,19 @@ For a new Supabase database only, apply the full `supabase_migration.sql` bootst
 
 #### Existing database
 
-Use Alembic (recommended) to apply versioned changes. Do not rerun the full bootstrap over an initialized production database. Alternatively, apply the matching update section in `supabase_migration.sql`.
+Use Alembic (recommended) to apply versioned changes when the database is already
+tracked by Alembic. Do not rerun the full bootstrap over an initialized production
+database. If the existing database was initialized from the Supabase SQL bootstrap
+and does not have an `alembic_version` table, run only the idempotent academic
+profile update block at the end of `supabase_migration.sql` in the Supabase SQL
+Editor instead of running Alembic against the untracked schema.
 ```bash
 alembic upgrade head
 ```
-The current head is `012_chat_voice_messages`. New deployments should use Alembic migrations to keep schema history aligned.
+The current Alembic head is `015_teacher_profile_backfill`. Run `alembic upgrade head`
+from the `server/` directory with the intended database configured in `DATABASE_URL`.
+This applies student academic fields, teacher verification, and creates missing profiles
+for existing teacher accounts.
 
 ### 3. Seed Sample Data (Development/Staging)
 

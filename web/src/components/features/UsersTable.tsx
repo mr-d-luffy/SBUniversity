@@ -9,6 +9,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Pencil,
+  Plus,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -26,6 +28,13 @@ import { api, ApiError, getDevAuthToken } from "@/lib/api";
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 type UserRole = "student" | "teacher" | "admin";
 type UserStatus = "active" | "suspended" | "deleted";
+type VerificationStatus = "not_verified" | "verified";
+
+interface DepartmentOption {
+  id: string;
+  name: string;
+  code: string;
+}
 
 interface UserStats {
   total: number;
@@ -45,11 +54,16 @@ interface ApiUser {
   created_at: string;
   student_profile?: {
     student_code: string;
+    department_id?: string | null;
     batch_year?: number | null;
+    academic_term?: string | null;
+    verification_status: VerificationStatus;
     department?: { name: string } | null;
   } | null;
   teacher_profile?: {
     employee_code: string;
+    department_id?: string | null;
+    verification_status: VerificationStatus;
     designation?: string | null;
     department?: { name: string } | null;
   } | null;
@@ -211,10 +225,23 @@ export function UsersTable({ initial }: { initial?: unknown }) {
   const [roleFilter, setRoleFilter] = useState<"all" | UserRole>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [departments, setDepartments] = useState<DepartmentOption[]>([]);
+  const [academicEditUser, setAcademicEditUser] = useState<ApiUser | null>(null);
+  const [editDepartmentId, setEditDepartmentId] = useState("");
+  const [editAcademicTerm, setEditAcademicTerm] = useState("");
+  const [editVerificationStatus, setEditVerificationStatus] = useState<VerificationStatus>("not_verified");
+  const [academicSaving, setAcademicSaving] = useState(false);
+  const [showCreateDepartment, setShowCreateDepartment] = useState(false);
+  const [creatingDepartment, setCreatingDepartment] = useState(false);
+  const [newDepartmentName, setNewDepartmentName] = useState("");
+  const [newDepartmentCode, setNewDepartmentCode] = useState("");
 
   /* ── Live stats state ── */
   const [stats, setStats] = useState<UserStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+
+  const canEditAcademicDetails = (user: ApiUser) =>
+    user.role === "student" || user.role === "teacher";
 
   const fetchStats = useCallback(async () => {
     try {
@@ -230,6 +257,19 @@ export function UsersTable({ initial }: { initial?: unknown }) {
       setStatsLoading(false);
     }
   }, [getToken]);
+
+  const fetchDepartments = useCallback(async () => {
+    try {
+      let token = await getToken();
+      if (!token && (process.env.NEXT_PUBLIC_DEMO_MODE === "true" || process.env.NODE_ENV === "development")) {
+        token = getDevAuthToken("admin");
+      }
+      const data = await api<DepartmentOption[]>("/admin/users/departments", token ?? undefined);
+      setDepartments(data);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to load departments.");
+    }
+  }, [getToken, toast]);
 
   /* ── Confirm modal state ── */
   const [confirm, setConfirm] = useState<{
@@ -287,6 +327,10 @@ export function UsersTable({ initial }: { initial?: unknown }) {
     fetchStats();
   }, [fetchUsers, fetchStats]);
 
+  useEffect(() => {
+    fetchDepartments();
+  }, [fetchDepartments]);
+
   /* Reset page when filter/search changes */
   useEffect(() => { setPage(1); }, [roleFilter, debouncedQ]);
 
@@ -304,12 +348,12 @@ export function UsersTable({ initial }: { initial?: unknown }) {
         if (!token && (process.env.NEXT_PUBLIC_DEMO_MODE === "true" || process.env.NODE_ENV === "development")) {
           token = getDevAuthToken("admin");
         }
-        await api(`/admin/users/${user.id}/role`, token ?? undefined, {
+        const updatedUser = await api<ApiUser>(`/admin/users/${user.id}/role`, token ?? undefined, {
           method: "PATCH",
           body: JSON.stringify({ role: newRole }),
         });
         setUsers((prev) =>
-          prev.map((u) => (u.id === user.id ? { ...u, role: newRole } : u))
+          prev.map((u) => (u.id === user.id ? updatedUser : u))
         );
         fetchStats();
         toast(`✅ ${user.full_name} is now ${newRole}`);
@@ -374,6 +418,99 @@ export function UsersTable({ initial }: { initial?: unknown }) {
     });
   };
 
+  const openAcademicEditor = (user: ApiUser) => {
+    setAcademicEditUser(user);
+    setEditDepartmentId(
+      user.role === "teacher"
+        ? user.teacher_profile?.department_id ?? ""
+        : user.student_profile?.department_id ?? ""
+    );
+    setEditAcademicTerm(user.role === "student" ? user.student_profile?.academic_term ?? "" : "");
+    setEditVerificationStatus(
+      user.role === "teacher"
+        ? user.teacher_profile?.verification_status ?? "not_verified"
+        : user.student_profile?.verification_status ?? "not_verified"
+    );
+    setShowCreateDepartment(false);
+    setNewDepartmentName("");
+    setNewDepartmentCode("");
+  };
+
+  const createDepartment = async () => {
+    const name = newDepartmentName.trim();
+    const code = newDepartmentCode.trim().toUpperCase();
+    if (name.length < 2 || code.length < 2) {
+      toast("Enter a department name and a code with at least 2 characters.");
+      return;
+    }
+
+    setCreatingDepartment(true);
+    try {
+      let token = await getToken({ skipCache: true });
+      if (!token && (process.env.NEXT_PUBLIC_DEMO_MODE === "true" || process.env.NODE_ENV === "development")) {
+        token = getDevAuthToken("admin");
+      }
+      const department = await api<DepartmentOption>(
+        "/admin/users/departments",
+        token ?? undefined,
+        {
+          method: "POST",
+          body: JSON.stringify({ name, code }),
+        }
+      );
+      setDepartments((current) => (
+        current.some((item) => item.id === department.id)
+          ? current
+          : [...current, department].sort((left, right) => left.name.localeCompare(right.name))
+      ));
+      setEditDepartmentId(department.id);
+      setNewDepartmentName("");
+      setNewDepartmentCode("");
+      setShowCreateDepartment(false);
+      toast(`Department "${department.name}" is ready to assign.`);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to create department.");
+    } finally {
+      setCreatingDepartment(false);
+    }
+  };
+
+  const saveAcademicDetails = async () => {
+    if (!academicEditUser) return;
+    setAcademicSaving(true);
+    try {
+      let token = await getToken({ skipCache: true });
+      if (!token && (process.env.NEXT_PUBLIC_DEMO_MODE === "true" || process.env.NODE_ENV === "development")) {
+        token = getDevAuthToken("admin");
+      }
+      await api(
+        `/admin/users/${academicEditUser.id}/academic-details`,
+        token ?? undefined,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            department_id: editDepartmentId || null,
+            ...(academicEditUser.role === "student"
+              ? {
+                  academic_term: editAcademicTerm.trim() || null,
+                }
+              : {}),
+            verification_status: editVerificationStatus,
+          }),
+        }
+      );
+      setAcademicEditUser(null);
+      await fetchUsers();
+      toast(
+        `Updated ${academicEditUser.role === "teacher" ? "teacher" : "academic"} details for ${academicEditUser.full_name}.`
+      );
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to update academic details.");
+    } finally {
+      setAcademicSaving(false);
+    }
+  };
+
   /* ── Execute confirmed action ── */
   const handleConfirm = async () => {
     setConfirmLoading(true);
@@ -390,16 +527,178 @@ export function UsersTable({ initial }: { initial?: unknown }) {
 
   /* ── Department label ── */
   const getDept = (u: ApiUser) =>
-    u.student_profile?.department?.name ??
-    u.teacher_profile?.department?.name ??
+    (u.role === "teacher" ? u.teacher_profile?.department?.name : u.student_profile?.department?.name) ??
     "—";
 
   const getCode = (u: ApiUser) =>
-    u.student_profile?.student_code ?? u.teacher_profile?.employee_code ?? null;
+    (u.role === "teacher" ? u.teacher_profile?.employee_code : u.student_profile?.student_code) ?? null;
 
   /* ─────────────────────────────────────────────────────────────────────── */
   return (
     <>
+      {academicEditUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-green-900/50 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="user-details-title"
+            className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl sm:p-6"
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 id="user-details-title" className="font-heading text-lg font-bold text-green-900">
+                  {academicEditUser.role === "teacher" ? "Edit Teacher Details" : "Edit Academic Details"}
+                </h2>
+                <p className="mt-1 text-sm text-ink-muted">{academicEditUser.full_name}</p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close academic details editor"
+                onClick={() => setAcademicEditUser(null)}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-ink-muted hover:bg-cream-100"
+              >
+                <X size={17} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <label className="block text-sm font-medium text-green-900">
+                Department
+                <select
+                  value={editDepartmentId}
+                  onChange={(event) => setEditDepartmentId(event.target.value)}
+                  className="mt-1.5 h-11 w-full rounded-lg border border-cream-300 bg-white px-3 text-sm text-ink focus:border-green-700 focus:outline-none"
+                >
+                  <option value="">No department</option>
+                  {departments.map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name} ({department.code})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {academicEditUser.role === "teacher" && (
+                <p className="-mt-2 text-xs text-ink-muted">
+                  Update this teacher’s department and verification status.
+                </p>
+              )}
+
+              <div className="rounded-lg border border-cream-300 bg-cream-50 p-3">
+                {!showCreateDepartment ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setShowCreateDepartment(true)}
+                  >
+                    <Plus size={14} /> Add custom department
+                  </Button>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-xs text-ink-muted">
+                      Create a shared department that can be assigned to other users too.
+                    </p>
+                    <label className="block text-sm font-medium text-green-900">
+                      Department name
+                      <input
+                        type="text"
+                        minLength={2}
+                        maxLength={200}
+                        value={newDepartmentName}
+                        onChange={(event) => setNewDepartmentName(event.target.value)}
+                        placeholder="e.g. Computer Science"
+                        className="mt-1.5 h-11 w-full rounded-lg border border-cream-300 bg-white px-3 text-sm text-ink focus:border-green-700 focus:outline-none"
+                      />
+                    </label>
+                    <label className="block text-sm font-medium text-green-900">
+                      Department code
+                      <input
+                        type="text"
+                        minLength={2}
+                        maxLength={50}
+                        value={newDepartmentCode}
+                        onChange={(event) => setNewDepartmentCode(event.target.value.toUpperCase())}
+                        placeholder="e.g. CSE"
+                        className="mt-1.5 h-11 w-full rounded-lg border border-cream-300 bg-white px-3 text-sm text-ink uppercase focus:border-green-700 focus:outline-none"
+                      />
+                    </label>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setShowCreateDepartment(false)}
+                        disabled={creatingDepartment}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="primary"
+                        onClick={() => void createDepartment()}
+                        disabled={creatingDepartment || newDepartmentName.trim().length < 2 || newDepartmentCode.trim().length < 2}
+                      >
+                        {creatingDepartment ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                        Create department
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {academicEditUser.role === "student" && (
+                <label className="block text-sm font-medium text-green-900">
+                  Academic Term
+                  <input
+                    type="text"
+                    maxLength={100}
+                    value={editAcademicTerm}
+                    onChange={(event) => setEditAcademicTerm(event.target.value)}
+                    placeholder="e.g. 2026–2027 / Semester 3"
+                    className="mt-1.5 h-11 w-full rounded-lg border border-cream-300 bg-white px-3 text-sm text-ink focus:border-green-700 focus:outline-none"
+                  />
+                </label>
+              )}
+
+              <label className="block text-sm font-medium text-green-900">
+                Verification Status
+                <select
+                  value={editVerificationStatus}
+                  onChange={(event) => setEditVerificationStatus(event.target.value as VerificationStatus)}
+                  className="mt-1.5 h-11 w-full rounded-lg border border-cream-300 bg-white px-3 text-sm text-ink focus:border-green-700 focus:outline-none"
+                >
+                  <option value="not_verified">Not verified</option>
+                  <option value="verified">Verified</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setAcademicEditUser(null)}
+                disabled={academicSaving}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={() => void saveAcademicDetails()}
+                disabled={academicSaving}
+              >
+                {academicSaving ? <Loader2 size={14} className="animate-spin" /> : <Pencil size={14} />}
+                Save details
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmModal
         open={confirm.open}
         title={confirm.title}
@@ -518,8 +817,16 @@ export function UsersTable({ initial }: { initial?: unknown }) {
         )}
 
         {/* ── Table ── */}
-        <div className="hidden max-w-full overflow-x-auto rounded-xl border border-cream-300 bg-white shadow-sm md:block">
-          <table className="w-full min-w-[780px] text-left text-sm">
+        <div className="hidden w-full max-w-full overflow-x-auto rounded-xl border border-cream-300 bg-white shadow-sm md:block">
+          <table className="w-full min-w-[1100px] table-fixed text-left text-sm">
+            <colgroup>
+              <col className="w-[25%]" />
+              <col className="w-[21%]" />
+              <col className="w-[15%]" />
+              <col className="w-[11%]" />
+              <col className="w-[11%]" />
+              <col className="w-[17%]" />
+            </colgroup>
             <thead className="bg-cream-100 text-xs font-semibold uppercase tracking-wide text-green-900">
               <tr>
                 <th className="px-5 py-3.5">User</th>
@@ -556,18 +863,37 @@ export function UsersTable({ initial }: { initial?: unknown }) {
                       </td>
 
                       {/* Dept / code */}
-                      <td className="px-5 py-3.5">
-                        <div className="text-xs text-ink">{getDept(u)}</div>
+                      <td className="px-3 py-3.5 sm:px-4">
+                        <div className="truncate text-xs text-ink" title={getDept(u)}>{getDept(u)}</div>
                         {getCode(u) && (
-                          <div className="font-mono text-[11px] text-green-700">
+                          <div className="truncate font-mono text-[11px] text-green-700" title={getCode(u) ?? undefined}>
                             {getCode(u)}
+                          </div>
+                        )}
+                        {u.role === "student" && u.student_profile && (
+                          <div className="mt-1 truncate text-[11px] text-ink-muted" title={`${u.student_profile.academic_term || "Term not set"} · ${u.student_profile.verification_status === "verified" ? "Verified" : "Not verified"}`}>
+                            {u.student_profile.academic_term || "Term not set"} ·{" "}
+                            {u.student_profile.verification_status === "verified" ? (
+                              <span className="inline-flex items-center gap-0.5">
+                                Verified <CheckCircle2 size={12} aria-label="Verified" className="text-blue-600" />
+                              </span>
+                            ) : "Not verified"}
+                          </div>
+                        )}
+                        {u.role === "teacher" && (
+                          <div className="mt-1 truncate text-[11px] text-ink-muted">
+                            {u.teacher_profile?.verification_status === "verified" ? (
+                              <span className="inline-flex items-center gap-0.5">
+                                Verified <CheckCircle2 size={12} aria-label="Verified" className="text-blue-600" />
+                              </span>
+                            ) : "Not verified"}
                           </div>
                         )}
                       </td>
 
                       {/* Role selector */}
                       <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-2">
+                        <div className="flex min-w-0 items-center gap-1.5">
                           <Badge tone={ROLE_TONE[u.role]}>
                             {u.role}
                           </Badge>
@@ -577,7 +903,7 @@ export function UsersTable({ initial }: { initial?: unknown }) {
                             onChange={(e) =>
                               handleRoleChange(u, e.target.value as UserRole)
                             }
-                            className="h-7 rounded border border-cream-300 bg-cream-50 px-1.5 text-xs font-medium text-green-900 capitalize focus:border-green-700 focus:outline-none cursor-pointer hover:border-green-400"
+                            className="h-8 min-w-0 max-w-[92px] rounded border border-cream-300 bg-cream-50 px-1 text-xs font-medium text-green-900 capitalize focus:border-green-700 focus:outline-none cursor-pointer hover:border-green-400"
                           >
                             <option value="student">Student</option>
                             <option value="teacher">Teacher</option>
@@ -607,30 +933,45 @@ export function UsersTable({ initial }: { initial?: unknown }) {
                       </td>
 
                       {/* Actions */}
-                      <td className="px-5 py-3.5 text-right">
-                        <div className="flex justify-end gap-2">
+                      <td className="px-2 py-3.5 text-right">
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          {canEditAcademicDetails(u) && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => openAcademicEditor(u)}
+                              className="h-10 min-h-0 w-10 shrink-0 p-0"
+                              aria-label={`Edit ${u.role === "teacher" ? "teacher" : "academic"} details for ${u.full_name}`}
+                              title={u.role === "teacher" ? "Edit teacher details" : "Edit academic details"}
+                            >
+                              <Pencil size={15} aria-hidden />
+                            </Button>
+                          )}
                           {u.status !== "deleted" && (
                             <Button
                               size="sm"
                               variant={u.status === "active" ? "danger" : "secondary"}
                               onClick={() => handleStatusToggle(u)}
-                              className="gap-1.5"
+                              className="h-10 min-h-0 w-10 shrink-0 p-0"
+                              aria-label={`${u.status === "active" ? "Suspend" : "Reactivate"} ${u.full_name}`}
+                              title={u.status === "active" ? "Suspend user" : "Reactivate user"}
                             >
                               {u.status === "active" ? (
-                                <>
-                                  <UserMinus size={13} aria-hidden />
-                                  Suspend
-                                </>
+                                <UserMinus size={15} aria-hidden />
                               ) : (
-                                <>
-                                  <UserPlus size={13} aria-hidden />
-                                  Reactivate
-                                </>
+                                <UserPlus size={15} aria-hidden />
                               )}
                             </Button>
                           )}
-                          <Button size="sm" variant="danger" onClick={() => handleDeleteUser(u)} className="gap-1.5">
-                            <Trash2 size={13} aria-hidden /> Delete
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            onClick={() => handleDeleteUser(u)}
+                            className="h-10 min-h-0 w-10 shrink-0 p-0"
+                            aria-label={`Delete ${u.full_name}`}
+                            title="Delete user"
+                          >
+                            <Trash2 size={15} aria-hidden />
                           </Button>
                         </div>
                       </td>
@@ -709,6 +1050,31 @@ export function UsersTable({ initial }: { initial?: unknown }) {
                       )}
                     </dd>
                   </div>
+                  {u.role === "student" && u.student_profile && (
+                    <div>
+                      <dt className="text-ink-muted">Academic term / verification</dt>
+                      <dd className="mt-0.5 font-medium text-ink">
+                        {u.student_profile.academic_term || "Term not set"} ·{" "}
+                        {u.student_profile.verification_status === "verified" ? (
+                          <span className="inline-flex items-center gap-0.5">
+                            Verified <CheckCircle2 size={14} aria-label="Verified" className="text-blue-600" />
+                          </span>
+                        ) : "Not verified"}
+                      </dd>
+                    </div>
+                  )}
+                  {u.role === "teacher" && (
+                    <div>
+                      <dt className="text-ink-muted">Verification status</dt>
+                      <dd className="mt-0.5 font-medium text-ink">
+                        {u.teacher_profile?.verification_status === "verified" ? (
+                          <span className="inline-flex items-center gap-0.5">
+                            Verified <CheckCircle2 size={14} aria-label="Verified" className="text-blue-600" />
+                          </span>
+                        ) : "Not verified"}
+                      </dd>
+                    </div>
+                  )}
                   <div>
                     <dt className="text-ink-muted">Joined</dt>
                     <dd className="mt-0.5 font-medium text-ink">
@@ -738,6 +1104,16 @@ export function UsersTable({ initial }: { initial?: unknown }) {
                 </dl>
 
                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  {canEditAcademicDetails(u) && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => openAcademicEditor(u)}
+                      className="min-h-11 justify-center gap-1.5"
+                    >
+                      <Pencil size={14} aria-hidden /> {u.role === "teacher" ? "Teacher details" : "Academic details"}
+                    </Button>
+                  )}
                   {u.status !== "deleted" && (
                     <Button
                       size="sm"

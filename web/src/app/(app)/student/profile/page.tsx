@@ -30,6 +30,8 @@ interface StudentCardData {
   name: string;
   student_code: string;
   department?: string | null;
+  academic_term?: string | null;
+  verification_status?: "not_verified" | "verified";
   batch_year?: number | null;
   phone?: string | null;
   photo_url?: string | null;
@@ -49,6 +51,8 @@ interface MeApiResponse {
   student_profile?: {
     student_code: string;
     batch_year?: number | null;
+    academic_term?: string | null;
+    verification_status?: "not_verified" | "verified";
     phone?: string | null;
     photo_path?: string | null;
     department?: { name: string } | null;
@@ -72,7 +76,7 @@ export default function StudentProfilePage() {
     student_code: "SBU-2026-0001",
     department: "Computer Science & Engineering",
     batch_year: 2026,
-    phone: "+91 98765 43210",
+    phone: "+91 00011-00011",
     photo_url: null,
     valid_until: "June 30, 2028",
     qr_verify_url: "/verify/student",
@@ -83,7 +87,7 @@ export default function StudentProfilePage() {
   // Edit form state
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
-  const [editEmergency, setEditEmergency] = useState("+91 91234 56789");
+  const [editEmergency, setEditEmergency] = useState("+91 00011-00011");
   const [editAvatarUrl, setEditAvatarUrl] = useState("");
 
   const resolveToken = useCallback(async () => {
@@ -108,7 +112,9 @@ export default function StudentProfilePage() {
       const studentCode = idCardRes?.student_code || meRes?.student_profile?.student_code || "SBU-2026-0001";
       const department = idCardRes?.department || meRes?.student_profile?.department?.name || "Computer Science & Engineering";
       const batchYear = idCardRes?.batch_year || meRes?.student_profile?.batch_year || 2026;
-      const phone = idCardRes?.phone || meRes?.student_profile?.phone || "+91 98765 43210";
+      const phone = idCardRes?.phone || meRes?.student_profile?.phone || "+91 00011-00011";
+      const academicTerm = idCardRes?.academic_term ?? meRes?.student_profile?.academic_term ?? null;
+      const verificationStatus = idCardRes?.verification_status ?? meRes?.student_profile?.verification_status ?? "not_verified";
       const storedPhoto = idCardRes?.photo_url || meRes?.avatar_url || null;
       let photoUrl = storedPhoto || user?.imageUrl || null;
       if (storedPhoto && !/^https?:\/\//i.test(storedPhoto) && token) {
@@ -130,6 +136,8 @@ export default function StudentProfilePage() {
         name,
         student_code: studentCode,
         department,
+        academic_term: academicTerm,
+        verification_status: verificationStatus,
         batch_year: batchYear,
         phone,
         photo_url: photoUrl,
@@ -353,7 +361,9 @@ export default function StudentProfilePage() {
                   <span className="flex items-center gap-2 text-xs font-medium text-ink-muted">
                     <Calendar size={14} className="text-green-700" /> Academic Term
                   </span>
-                  <p className="mt-1 font-semibold text-green-900">Semester 4 ({batchString})</p>
+                  <p className="mt-1 break-words font-semibold text-green-900">
+                    {cardData.academic_term || "Not set"}
+                  </p>
                 </div>
 
                 <div className="rounded-lg bg-cream-50 p-3.5">
@@ -369,7 +379,14 @@ export default function StudentProfilePage() {
                   <span className="flex items-center gap-2 text-xs font-medium text-ink-muted">
                     <CheckCircle2 size={14} className="text-green-700" /> Verification Status
                   </span>
-                  <p className="mt-1 font-semibold text-green-900">Enrolled & In Good Standing</p>
+                  <p className="mt-1 inline-flex items-center gap-1 font-semibold text-green-900">
+                    {cardData.verification_status === "verified" ? (
+                      <>
+                        Verified
+                        <CheckCircle2 size={16} aria-label="Verified" className="text-blue-600" />
+                      </>
+                    ) : "Not verified"}
+                  </p>
                 </div>
               </div>
             </Card>
@@ -468,7 +485,7 @@ export default function StudentProfilePage() {
                   value={editPhone}
                   onChange={(e) => setEditPhone(e.target.value)}
                   className="h-10 w-full rounded-lg border border-cream-300 bg-white px-3 text-sm text-ink focus:border-green-700 focus:outline-none"
-                  placeholder="+91 98765 43210"
+                  placeholder="+91 00011-00011"
                 />
               </div>
 
@@ -481,7 +498,7 @@ export default function StudentProfilePage() {
                   value={editEmergency}
                   onChange={(e) => setEditEmergency(e.target.value)}
                   className="h-10 w-full rounded-lg border border-cream-300 bg-white px-3 text-sm text-ink focus:border-green-700 focus:outline-none"
-                  placeholder="+91 91234 56789"
+                  placeholder="+91 00011-00011"
                 />
               </div>
 

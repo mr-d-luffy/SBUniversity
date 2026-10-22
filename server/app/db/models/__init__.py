@@ -1,5 +1,13 @@
 from app.db.base import Base
-from app.db.models.user import User, UserRole, UserStatus, Department, StudentProfile, TeacherProfile
+from app.db.models.user import (
+    User,
+    UserRole,
+    UserStatus,
+    UserVerificationStatus,
+    Department,
+    StudentProfile,
+    TeacherProfile,
+)
 from app.db.models.course import Course, CourseTeacher, Enrollment, EnrollmentStatus
 from app.db.models.exam import Exam, ExamStatus, Question, QuestionOption, ExamAttempt, AttemptStatus, AttemptAnswer
 from app.db.models.result import Result
@@ -38,6 +46,7 @@ __all__ = [
     "User",
     "UserRole",
     "UserStatus",
+    "UserVerificationStatus",
     "Department",
     "StudentProfile",
     "TeacherProfile",

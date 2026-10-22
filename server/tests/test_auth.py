@@ -22,6 +22,25 @@ async def test_get_me_student(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_student_id_card_includes_admin_managed_academic_details(client: AsyncClient, db_session):
+    from app.db.models.user import UserVerificationStatus
+
+    profile = db_session.test_student1.student_profile
+    profile.academic_term = "2026-2027 / Semester 3"
+    profile.verification_status = UserVerificationStatus.VERIFIED
+    await db_session.commit()
+
+    response = await client.get(
+        "/student/id-card",
+        headers={"Authorization": "Bearer dev-token-student-u_student1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["academic_term"] == "2026-2027 / Semester 3"
+    assert response.json()["verification_status"] == "verified"
+
+
+@pytest.mark.asyncio
 async def test_database_role_is_authoritative_over_stale_token_metadata(
     client: AsyncClient,
     db_session,
@@ -136,6 +155,8 @@ async def test_admin_change_role_and_student_profile(client: AsyncClient):
     )
     assert resp1.status_code == 200
     assert resp1.json()["role"] == "teacher"
+    assert resp1.json()["teacher_profile"] is not None
+    assert resp1.json()["teacher_profile"]["employee_code"]
 
     # Change role back to student
     resp2 = await client.patch(

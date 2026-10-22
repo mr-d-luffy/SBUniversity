@@ -11,6 +11,7 @@
 ```
 user_role:        student | teacher | admin
 user_status:      active | suspended | deleted
+user_verification_status: not_verified | verified
 enrollment_status: active | completed | dropped
 exam_status:      draft | published | closed
 attempt_status:   in_progress | submitted | auto_submitted
@@ -93,8 +94,18 @@ student_profiles
  ├── photo_path       text NULL                   -- Supabase Storage
  ├── id_valid_until   date NULL
  ├── qr_token         text UNIQUE NOT NULL        -- random, for public verify
+ ├── academic_term    varchar(100) NULL           -- e.g. 2026–2027 / Semester 3
+ ├── verification_status user_verification_status NOT NULL DEFAULT 'not_verified'
  └── updated_at       timestamptz
 ```
+
+Admin updates to student academic details are available through
+`PATCH /api/v1/admin/users/{user_id}/academic-details`. Department IDs reference
+`departments.id`; department updates are supported for student and teacher
+profiles. Academic term applies to students, while verification status can be
+updated for both students and teachers. The schema updates are deployed with
+Alembic revisions `013_student_academic_verification` and
+`014_teacher_verification_status`.
 
 ### teacher_profiles
 ```
@@ -102,6 +113,7 @@ teacher_profiles
  ├── user_id        uuid PK → users.id ON DELETE CASCADE
  ├── employee_code  text UNIQUE NOT NULL
  ├── department_id  uuid NULL → departments.id
+ ├── verification_status user_verification_status NOT NULL DEFAULT 'not_verified'
  ├── designation    text NULL
  └── bio            text NULL
 ```

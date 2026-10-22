@@ -6,7 +6,7 @@ import { ArrowLeft, Plus, Trash2, CheckCircle2, Loader2, Upload } from "lucide-r
 import { PageHeader, Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
-import { api, getDevAuthToken } from "@/lib/api";
+import { ApiError, api, getDevAuthToken } from "@/lib/api";
 
 interface OptionDraft {
   text: string;
@@ -28,6 +28,28 @@ interface TeacherCourse {
 
 interface TeacherDashboardResponse {
   my_courses: TeacherCourse[];
+}
+
+interface EditableExam {
+  id: string;
+  course_id: string;
+  title: string;
+  instructions: string | null;
+  duration_minutes: number;
+  pass_marks: number;
+  negative_marking: number;
+  max_attempts: number;
+  shuffle_questions: boolean;
+  show_review: boolean;
+  start_at: string;
+  end_at: string;
+  task_points: number | null;
+  questions: {
+    text: string;
+    marks: number;
+    explanation: string | null;
+    options: { text: string; is_correct: boolean | null }[];
+  }[];
 }
 
 function toLocalDateTimeInput(date: Date): string {
@@ -118,6 +140,9 @@ export default function NewExamPage() {
   const [courseId, setCourseId] = useState("");
   const [loadingCourses, setLoadingCourses] = useState(true);
   const [coursesError, setCoursesError] = useState<string | null>(null);
+  const [editExamId, setEditExamId] = useState<string | null>(null);
+  const [loadingExam, setLoadingExam] = useState(false);
+  const [examError, setExamError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [startAt, setStartAt] = useState(() =>
     toLocalDateTimeInput(new Date(Date.now() + 60 * 60 * 1000))
@@ -131,6 +156,9 @@ export default function NewExamPage() {
   const [passMarks, setPassMarks] = useState(5);
   const [taskPoints, setTaskPoints] = useState(50);
   const [negativeMarking, setNegativeMarking] = useState(0);
+  const [maxAttempts, setMaxAttempts] = useState(1);
+  const [shuffleQuestions, setShuffleQuestions] = useState(true);
+  const [showReview, setShowReview] = useState(true);
 
   const [questions, setQuestions] = useState<QuestionDraft[]>([
     {
@@ -147,12 +175,22 @@ export default function NewExamPage() {
   ]);
 
   const resolveToken = useCallback(async () => {
-    let token = await getToken();
+    let token = await getToken({ skipCache: true });
     if (!token && (process.env.NEXT_PUBLIC_DEMO_MODE === "true" || process.env.NODE_ENV === "development")) {
       token = getDevAuthToken("teacher");
     }
     return token;
   }, [getToken]);
+
+  const apiWithAuthRetry = useCallback(async <T,>(path: string, init: RequestInit) => {
+    const request = async () => api<T>(path, (await resolveToken()) ?? undefined, init);
+    try {
+      return await request();
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 401) throw error;
+      return request();
+    }
+  }, [resolveToken]);
 
   const loadCourses = useCallback(async () => {
     setLoadingCourses(true);
@@ -172,6 +210,45 @@ export default function NewExamPage() {
   useEffect(() => {
     void loadCourses();
   }, [loadCourses]);
+
+  useEffect(() => {
+    const examId = new URLSearchParams(window.location.search).get("edit");
+    if (!examId) return;
+
+    setEditExamId(examId);
+    setLoadingExam(true);
+    setExamError(null);
+    void (async () => {
+      try {
+        const exam = await apiWithAuthRetry<EditableExam>(`/exams/${examId}`, {});
+        setCourseId(exam.course_id);
+        setTitle(exam.title);
+        setInstructions(exam.instructions ?? "");
+        setDurationMinutes(exam.duration_minutes);
+        setPassMarks(exam.pass_marks);
+        setNegativeMarking(exam.negative_marking);
+        setMaxAttempts(exam.max_attempts);
+        setShuffleQuestions(exam.shuffle_questions);
+        setShowReview(exam.show_review);
+        setTaskPoints(exam.task_points ?? 0);
+        setStartAt(toLocalDateTimeInput(new Date(exam.start_at)));
+        setEndAt(toLocalDateTimeInput(new Date(exam.end_at)));
+        setQuestions(exam.questions.map((question) => ({
+          text: question.text,
+          marks: question.marks,
+          explanation: question.explanation ?? "",
+          options: question.options.map((option) => ({
+            text: option.text,
+            isCorrect: option.is_correct === true,
+          })),
+        })));
+      } catch (err) {
+        setExamError(err instanceof Error ? err.message : "Failed to load exam.");
+      } finally {
+        setLoadingExam(false);
+      }
+    })();
+  }, [apiWithAuthRetry]);
 
   const addQuestion = () => {
     setQuestions((prev) => [
@@ -277,65 +354,56 @@ export default function NewExamPage() {
     }
 
     setIsSaving(true);
-    let createdExamId: string | null = null;
     try {
-      const token = await resolveToken();
-      const createdExam = await api<{ id: string }>(
-        "/exams",
-        token ?? undefined,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            course_id: courseId,
-            title: title.trim(),
-            instructions: instructions.trim() || null,
-            duration_minutes: durationMinutes,
-            pass_marks: passMarks,
-            negative_marking: negativeMarking,
-            start_at: start.toISOString(),
-            end_at: end.toISOString(),
-          }),
-        }
-      );
-      createdExamId = createdExam.id;
+      const payload = {
+        course_id: courseId,
+        title: title.trim(),
+        instructions: instructions.trim() || null,
+        duration_minutes: durationMinutes,
+        pass_marks: passMarks,
+        negative_marking: negativeMarking,
+        max_attempts: maxAttempts,
+        shuffle_questions: shuffleQuestions,
+        show_review: showReview,
+        start_at: start.toISOString(),
+        end_at: end.toISOString(),
+        task_points: taskPoints,
+        questions: questions.map((question, index) => ({
+          text: question.text.trim(),
+          marks: question.marks,
+          position: index + 1,
+          explanation: question.explanation.trim() || null,
+          options: question.options.map((option, optionIndex) => ({
+            text: option.text.trim(),
+            is_correct: option.isCorrect,
+            position: optionIndex + 1,
+          })),
+        })),
+      };
 
-      for (const [index, question] of questions.entries()) {
-        await api(
-          `/exams/${createdExam.id}/questions`,
-          token ?? undefined,
+      if (editExamId) {
+        await apiWithAuthRetry(
+          `/exams/${editExamId}`,
+          { method: "PATCH", body: JSON.stringify(payload) }
+        );
+      } else {
+        await apiWithAuthRetry<{ id: string }>(
+          "/exams",
           {
             method: "POST",
             body: JSON.stringify({
-              text: question.text.trim(),
-              marks: question.marks,
-              position: index + 1,
-              explanation: question.explanation.trim() || null,
-              options: question.options.map((option, optionIndex) => ({
-                text: option.text.trim(),
-                is_correct: option.isCorrect,
-                position: optionIndex + 1,
-              })),
+              ...payload,
+              publish_immediately: publishImmediately,
             }),
-          }
+          },
         );
       }
 
-      if (publishImmediately) {
-        await api(
-          `/exams/${createdExam.id}/publish`,
-          token ?? undefined,
-          {
-            method: "POST",
-            body: JSON.stringify({ task_points: taskPoints }),
-          }
-        );
-      }
-
-      toast(publishImmediately ? `Published "${title}".` : `Saved "${title}" as a draft.`);
+      toast(editExamId ? `Updated "${title}".` : publishImmediately ? `Published "${title}".` : `Created "${title}" as a draft.`);
       router.push("/teacher/exams");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to save the exam.";
-      toast(createdExamId ? `Exam draft ${createdExamId} was created, but setup failed: ${message}` : message);
+      toast(message);
     } finally {
       setIsSaving(false);
     }
@@ -352,9 +420,12 @@ export default function NewExamPage() {
       </div>
 
       <PageHeader
-        title="Create New Examination"
-        subtitle="Configure exam details, duration, question bank, and linked Task Points."
+        title={editExamId ? "Edit Examination" : "Create New Examination"}
+        subtitle={editExamId ? "Update exam settings, questions, and answer options." : "Configure exam details, duration, question bank, and linked Task Points."}
       />
+
+      {examError && <Card className="p-5 text-sm text-danger">{examError}</Card>}
+      {loadingExam && <Card className="p-5 text-sm text-ink-muted">Loading exam details...</Card>}
 
       {coursesError ? (
         <Card className="p-5 text-sm text-danger">
@@ -452,6 +523,53 @@ export default function NewExamPage() {
                 />
                 <span className="text-[11px] text-ink-muted">Earned automatically when student passes</span>
               </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-green-900 mb-1">
+                  Negative Marking
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={negativeMarking}
+                  onChange={(e) => setNegativeMarking(Number(e.target.value))}
+                  className="h-11 min-w-0 max-w-full w-full rounded-lg border border-cream-300 bg-white px-3 text-sm text-ink focus:border-green-700 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-green-900 mb-1">
+                  Maximum Attempts
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={maxAttempts}
+                  onChange={(e) => setMaxAttempts(Number(e.target.value))}
+                  className="h-11 min-w-0 max-w-full w-full rounded-lg border border-cream-300 bg-white px-3 text-sm text-ink focus:border-green-700 focus:outline-none"
+                />
+              </div>
+
+              <label className="flex min-h-11 items-center gap-2 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={shuffleQuestions}
+                  onChange={(e) => setShuffleQuestions(e.target.checked)}
+                  className="h-4 w-4 accent-green-700"
+                />
+                Shuffle questions
+              </label>
+
+              <label className="flex min-h-11 items-center gap-2 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={showReview}
+                  onChange={(e) => setShowReview(e.target.checked)}
+                  className="h-4 w-4 accent-green-700"
+                />
+                Allow students to review answers
+              </label>
 
               <div>
                 <label className="block text-xs font-semibold text-green-900 mb-1">
@@ -648,26 +766,33 @@ export default function NewExamPage() {
             </div>
 
             <div className="border-t border-cream-200 pt-3 space-y-2">
+              {!editExamId && (
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="md"
+                  className="min-h-11 w-full"
+                  disabled={isSaving || loadingExam || loadingCourses || courses.length === 0 || Boolean(examError)}
+                  onClick={() => void handleSubmit(true)}
+                >
+                  {isSaving ? <Loader2 size={16} className="animate-spin" /> : "Publish Exam Now"}
+                </Button>
+              )}
               <Button
                 type="button"
-                variant="primary"
+                variant={editExamId ? "primary" : "secondary"}
                 size="md"
                 className="min-h-11 w-full"
-                disabled={isSaving || loadingCourses || courses.length === 0}
-                onClick={() => void handleSubmit(true)}
-              >
-                {isSaving ? <Loader2 size={16} className="animate-spin" /> : "Publish Exam Now"}
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="md"
-                className="min-h-11 w-full"
-                disabled={isSaving || loadingCourses || courses.length === 0}
+                disabled={isSaving || loadingExam || loadingCourses || courses.length === 0 || Boolean(examError)}
                 onClick={() => void handleSubmit(false)}
               >
-                {isSaving ? <Loader2 size={16} className="animate-spin" /> : "Save as Draft"}
+                {isSaving ? <Loader2 size={16} className="animate-spin" /> : editExamId ? "Save Changes" : "Create Exam"}
               </Button>
+              {!editExamId && (
+                <p className="text-xs text-ink-muted">
+                  Create Exam saves it as a draft. Publish or stop it later from your exam list.
+                </p>
+              )}
             </div>
           </Card>
         </div>

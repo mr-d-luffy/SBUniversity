@@ -9,6 +9,8 @@ import {
   CheckCircle2,
   Loader2,
   RefreshCw,
+  Trash2,
+  Pencil,
 } from "lucide-react";
 import { PageHeader, Card, StatCard } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -76,9 +78,25 @@ export default function TeacherExamsPage() {
         }
       );
       await loadExams();
-      toast(action === "publish" ? `Published "${exam.title}".` : `Closed "${exam.title}".`);
+      toast(action === "publish" ? `Published "${exam.title}".` : `Stopped "${exam.title}".`);
     } catch (err) {
       toast(err instanceof Error ? err.message : `Failed to ${action} exam.`);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const deleteExam = async (exam: TeacherExam) => {
+    if (!window.confirm(`Delete "${exam.title}"? This cannot be undone.`)) return;
+
+    setProcessingId(exam.id);
+    try {
+      const token = await resolveToken();
+      await api(`/exams/${exam.id}`, token ?? undefined, { method: "DELETE" });
+      setExams((current) => current.filter((item) => item.id !== exam.id));
+      toast(`Deleted "${exam.title}".`);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to delete exam.");
     } finally {
       setProcessingId(null);
     }
@@ -178,9 +196,31 @@ export default function TeacherExamsPage() {
                         disabled={processingId === exam.id}
                         onClick={() => void changeExamStatus(exam, "close")}
                       >
-                        {processingId === exam.id ? <Loader2 size={14} className="animate-spin" /> : "Close Exam"}
+                        {processingId === exam.id ? <Loader2 size={14} className="animate-spin" /> : "Stop Exam"}
                       </Button>
                     )}
+                    {exam.status !== "closed" && (
+                      <Button
+                        href={`/teacher/exams/new?edit=${exam.id}`}
+                        variant="secondary"
+                        size="sm"
+                        className="min-h-11"
+                        aria-label={`Edit ${exam.title}`}
+                      >
+                        <Pencil size={14} /> Edit
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      className="min-h-11"
+                      disabled={processingId === exam.id}
+                      aria-label={`Delete ${exam.title}`}
+                      onClick={() => void deleteExam(exam)}
+                    >
+                      {processingId === exam.id ? <Loader2 size={14} className="animate-spin" /> : <><Trash2 size={14} /> Delete</>}
+                    </Button>
                   </div>
                 </div>
               </Card>

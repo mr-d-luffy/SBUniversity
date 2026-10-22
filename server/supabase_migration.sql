@@ -17,6 +17,10 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
+    CREATE TYPE user_verification_status AS ENUM ('not_verified', 'verified');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
     CREATE TYPE enrollment_status AS ENUM ('active', 'completed', 'dropped');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
@@ -134,6 +138,8 @@ CREATE TABLE IF NOT EXISTS public.student_profiles (
     student_code TEXT UNIQUE NOT NULL,
     department_id UUID NULL REFERENCES public.departments(id) ON DELETE SET NULL,
     batch_year INT NULL,
+    academic_term VARCHAR(100) NULL,
+    verification_status user_verification_status NOT NULL DEFAULT 'not_verified',
     phone TEXT NULL,
     date_of_birth DATE NULL,
     photo_path TEXT NULL,
@@ -152,6 +158,7 @@ CREATE TABLE IF NOT EXISTS public.teacher_profiles (
     user_id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
     employee_code TEXT UNIQUE NOT NULL,
     department_id UUID NULL REFERENCES public.departments(id) ON DELETE SET NULL,
+    verification_status user_verification_status NOT NULL DEFAULT 'not_verified',
     designation TEXT NULL,
     bio TEXT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -751,6 +758,34 @@ END $$;
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('sbu-storage', 'sbu-storage', false)
 ON CONFLICT (id) DO NOTHING;
+
+-- 9. IDEMPOTENT ACADEMIC PROFILE UPDATES FOR EXISTING DATABASES
+DO $$ BEGIN
+    CREATE TYPE user_verification_status AS ENUM ('not_verified', 'verified');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+ALTER TABLE public.student_profiles
+    ADD COLUMN IF NOT EXISTS academic_term VARCHAR(100) NULL,
+    ADD COLUMN IF NOT EXISTS verification_status user_verification_status
+        NOT NULL DEFAULT 'not_verified';
+
+ALTER TABLE public.teacher_profiles
+    ADD COLUMN IF NOT EXISTS verification_status user_verification_status
+        NOT NULL DEFAULT 'not_verified';
+
+INSERT INTO public.teacher_profiles (user_id, employee_code, department_id)
+SELECT users.id,
+       'T-' || upper(substr(replace(users.id::text, '-', ''), 1, 12)),
+       student_profiles.department_id
+FROM public.users
+LEFT JOIN public.student_profiles ON student_profiles.user_id = users.id
+WHERE users.role = 'teacher'
+  AND NOT EXISTS (
+      SELECT 1
+      FROM public.teacher_profiles
+      WHERE teacher_profiles.user_id = users.id
+  )
+ON CONFLICT (user_id) DO NOTHING;
 
 -- 7. ADMIN COURSE MANAGEMENT AND ACCOUNT DELETION
 CREATE TABLE IF NOT EXISTS public.course_teachers (

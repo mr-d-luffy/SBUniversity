@@ -8,7 +8,7 @@ from app.db.models.exam import AttemptStatus, ExamStatus
 class QuestionOptionCreate(BaseModel):
     text: str
     is_correct: bool = False
-    position: int
+    position: int = Field(ge=1)
 
 
 class QuestionOptionResponse(BaseModel):
@@ -21,10 +21,10 @@ class QuestionOptionResponse(BaseModel):
 
 class QuestionCreate(BaseModel):
     text: str
-    marks: float = 1.0
-    position: int
+    marks: float = Field(default=1.0, gt=0)
+    position: int = Field(ge=1)
     explanation: Optional[str] = None
-    options: List[QuestionOptionCreate]
+    options: List[QuestionOptionCreate] = Field(min_length=2)
 
 
 class QuestionResponse(BaseModel):
@@ -49,9 +49,13 @@ class ExamCreate(BaseModel):
     show_review: bool = True
     start_at: datetime
     end_at: datetime
+    questions: List[QuestionCreate] = Field(default_factory=list)
+    publish_immediately: bool = False
+    task_points: int = Field(default=0, ge=0)
 
 
 class ExamUpdate(BaseModel):
+    course_id: Optional[uuid.UUID] = None
     title: Optional[str] = None
     instructions: Optional[str] = None
     duration_minutes: Optional[int] = Field(default=None, gt=0)
@@ -62,6 +66,8 @@ class ExamUpdate(BaseModel):
     show_review: Optional[bool] = None
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
+    questions: Optional[List[QuestionCreate]] = None
+    task_points: Optional[int] = Field(default=None, ge=0)
 
 
 class ExamPublishRequest(BaseModel):

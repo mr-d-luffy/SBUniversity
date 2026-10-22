@@ -1,17 +1,26 @@
 import uuid
-from typing import Optional
-from fastapi import HTTPException, status
+
 import httpx
+from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import settings
 from app.core.logging import logger
 from app.db.models.audit import AuditLog
 from app.db.models.course import Course, CourseTeacher
-from app.db.models.user import StudentProfile, TeacherProfile, User, UserRole, UserStatus
+from app.db.models.user import (
+    Department,
+    StudentProfile,
+    TeacherProfile,
+    User,
+    UserRole,
+    UserStatus,
+    UserVerificationStatus,
+)
 from app.repositories.audit_repository import AuditRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas.user import UserUpdate, VirtualIDCardResponse
+from app.schemas.user import AdminUserAcademicUpdate, UserUpdate, VirtualIDCardResponse
 from app.services.ranking_service import RankingService
 
 
@@ -34,6 +43,8 @@ class UserService:
             name=user.full_name,
             student_code=profile.student_code,
             department=dept_name,
+            academic_term=profile.academic_term,
+            verification_status=profile.verification_status,
             batch_year=profile.batch_year,
             phone=profile.phone,
             photo_url=profile.photo_path or user.avatar_url,
@@ -54,6 +65,18 @@ class UserService:
             user.student_profile.date_of_birth = data.date_of_birth
 
         return await self.user_repo.update(user)
+
+    async def _ensure_role_profile(self, user: User, role: UserRole) -> None:
+        if role == UserRole.STUDENT and user.student_profile is None:
+            user.student_profile = StudentProfile(
+                student_code=await self.user_repo.next_student_code(2026),
+                qr_token=user.clerk_user_id,
+            )
+        elif role == UserRole.TEACHER and user.teacher_profile is None:
+            user.teacher_profile = TeacherProfile(
+                employee_code=f"T-{user.id.hex[:12].upper()}",
+                department_id=user.student_profile.department_id if user.student_profile else None,
+            )
 
     async def change_role(self, user_id: uuid.UUID, new_role: UserRole, admin: User) -> User:
         if admin.role != UserRole.ADMIN:
@@ -104,6 +127,7 @@ class UserService:
                     detail="Role update could not be synchronized. Please try again.",
                 ) from e
 
+        await self._ensure_role_profile(target_user, new_role)
         target_user.role = new_role
         # Audit log
         await self.audit_repo.log(
@@ -140,6 +164,83 @@ class UserService:
         # Refresh ranking (removes from leaderboard if suspended/deleted, or restores if active)
         await self.ranking_service.refresh_student(target_user.id)
         return updated_user
+
+    async def update_academic_details(
+        self,
+        user_id: uuid.UUID,
+        data: AdminUserAcademicUpdate,
+        admin: User,
+    ) -> User:
+        if admin.role != UserRole.ADMIN:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins can update user academic details")
+
+        target_user = await self.user_repo.get_by_id(user_id)
+        if target_user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        changes = data.model_dump(exclude_unset=True)
+        if not changes:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No academic details were provided")
+
+        await self._ensure_role_profile(target_user, target_user.role)
+
+        if "department_id" in changes and changes["department_id"] is not None:
+            department = await self.db.get(Department, changes["department_id"])
+            if department is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department not found")
+
+        profile = (
+            target_user.student_profile
+            if target_user.role == UserRole.STUDENT
+            else target_user.teacher_profile
+            if target_user.role == UserRole.TEACHER
+            else None
+        )
+        if profile is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Academic details can only be updated for students and teachers",
+            )
+        if target_user.role == UserRole.TEACHER and "academic_term" in changes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Academic term is only available for student accounts",
+            )
+
+        if "department_id" in changes:
+            profile.department_id = changes["department_id"]
+
+        if target_user.role == UserRole.STUDENT:
+            student_profile = target_user.student_profile
+            if student_profile is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Student profile not found",
+                )
+            if "academic_term" in changes:
+                student_profile.academic_term = changes["academic_term"]
+            if "verification_status" in changes:
+                student_profile.verification_status = changes["verification_status"]
+        elif "verification_status" in changes:
+            teacher_profile = target_user.teacher_profile
+            if teacher_profile is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Teacher profile not found",
+                )
+            teacher_profile.verification_status = changes["verification_status"]
+
+        await self.audit_repo.log(
+            actor_id=admin.id,
+            action="user.academic_details_updated",
+            entity_type="user",
+            entity_id=str(target_user.id),
+            metadata={
+                key: value.value if isinstance(value, UserVerificationStatus) else str(value) if value is not None else None
+                for key, value in changes.items()
+            },
+        )
+        return await self.user_repo.update(target_user)
 
     async def delete_account(self, user_id: uuid.UUID, admin: User) -> None:
         if admin.role != UserRole.ADMIN:

@@ -2,8 +2,21 @@ import enum
 import uuid
 from datetime import date, datetime
 from typing import List, Optional
-from sqlalchemy import Date, DateTime, Enum, ForeignKey, Integer, String, Text, Uuid, func
+
+from sqlalchemy import (
+    Date,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    Uuid,
+    func,
+)
+from sqlalchemy.dialects.postgresql import ENUM as PostgreSQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
@@ -17,6 +30,11 @@ class UserStatus(str, enum.Enum):
     ACTIVE = "active"
     SUSPENDED = "suspended"
     DELETED = "deleted"
+
+
+class UserVerificationStatus(str, enum.Enum):
+    NOT_VERIFIED = "not_verified"
+    VERIFIED = "verified"
 
 
 class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -75,6 +93,17 @@ class StudentProfile(Base):
     student_code: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     department_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
     batch_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    academic_term: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    verification_status: Mapped[UserVerificationStatus] = mapped_column(
+        PostgreSQLEnum(
+            UserVerificationStatus,
+            name="user_verification_status",
+            values_callable=lambda values: [value.value for value in values],
+        ),
+        default=UserVerificationStatus.NOT_VERIFIED,
+        server_default=UserVerificationStatus.NOT_VERIFIED.value,
+        nullable=False,
+    )
     phone: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     date_of_birth: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     photo_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -92,6 +121,17 @@ class TeacherProfile(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     employee_code: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     department_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
+    verification_status: Mapped[UserVerificationStatus] = mapped_column(
+        PostgreSQLEnum(
+            UserVerificationStatus,
+            name="user_verification_status",
+            values_callable=lambda values: [value.value for value in values],
+            create_type=False,
+        ),
+        default=UserVerificationStatus.NOT_VERIFIED,
+        server_default=UserVerificationStatus.NOT_VERIFIED.value,
+        nullable=False,
+    )
     designation: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

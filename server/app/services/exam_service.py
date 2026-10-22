@@ -18,7 +18,7 @@ from app.db.models.exam import (
     QuestionOption,
 )
 from app.db.models.result import Result
-from app.db.models.task import Task, TaskStatus, TaskType, TaskVerification
+from app.db.models.task import Task, TaskCompletion, TaskStatus, TaskType, TaskVerification
 from app.db.models.user import User, UserRole
 from app.repositories.course_repository import CourseRepository
 from app.repositories.exam_repository import ExamRepository
@@ -87,13 +87,36 @@ class ExamService:
         if data.end_at <= data.start_at:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_at must be strictly after start_at")
 
+        if data.publish_immediately and not data.questions:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot publish exam without questions")
+
+        total_marks = sum(question.marks for question in data.questions)
+        if data.pass_marks > total_marks:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="pass_marks cannot be greater than the total marks",
+            )
+        if not data.questions and data.pass_marks > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Add questions before setting pass_marks",
+            )
+
+        for question in data.questions:
+            correct_count = sum(1 for option in question.options if option.is_correct)
+            if correct_count != 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Question must have exactly one correct option (found {correct_count})",
+                )
+
         exam = Exam(
             course_id=data.course_id,
             created_by=creator.id,
             title=data.title,
             instructions=data.instructions,
             duration_minutes=data.duration_minutes,
-            total_marks=0.00,
+            total_marks=total_marks,
             pass_marks=data.pass_marks,
             negative_marking=data.negative_marking,
             max_attempts=data.max_attempts,
@@ -101,9 +124,38 @@ class ExamService:
             show_review=data.show_review,
             start_at=data.start_at,
             end_at=data.end_at,
-            status=ExamStatus.DRAFT,
+            status=ExamStatus.PUBLISHED if data.publish_immediately else ExamStatus.DRAFT,
         )
-        return await self.exam_repo.create(exam)
+        self.db.add(exam)
+        await self.db.flush()
+
+        for question_data in data.questions:
+            question = Question(
+                exam_id=exam.id,
+                text=question_data.text,
+                marks=question_data.marks,
+                position=question_data.position,
+                explanation=question_data.explanation,
+            )
+            self.db.add(question)
+            self.db.add_all(
+                [
+                    QuestionOption(
+                        question=question,
+                        text=option.text,
+                        is_correct=option.is_correct,
+                        position=option.position,
+                    )
+                    for option in question_data.options
+                ]
+            )
+
+        if data.publish_immediately:
+            await self._set_exam_task(exam, creator, data.task_points)
+
+        await self.db.commit()
+        await self.db.refresh(exam)
+        return exam
 
     async def update_exam(self, exam_id: uuid.UUID, data: ExamUpdate, user: User) -> Exam:
         exam = await self.exam_repo.get_by_id(exam_id)
@@ -118,11 +170,86 @@ class ExamService:
         ):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot edit exams for another teacher's course")
 
-        for field, val in data.model_dump(exclude_unset=True).items():
+        if data.course_id is not None and data.course_id != exam.course_id:
+            new_course = await self.course_repo.get_by_id(data.course_id)
+            if not new_course:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+            if user.role == UserRole.TEACHER and not await self.course_repo.is_teacher_assigned(
+                new_course.id, user.id
+            ):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot move exam to another teacher's course")
+            course = new_course
+
+        if data.questions is not None:
+            attempt_count = await self.db.scalar(
+                select(func.count(ExamAttempt.id)).where(ExamAttempt.exam_id == exam.id)
+            )
+            if attempt_count:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Cannot edit exam questions after students have started attempts",
+                )
+
+            question_positions = [question.position for question in data.questions]
+            if len(question_positions) != len(set(question_positions)):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Question positions must be unique")
+            for question in data.questions:
+                option_positions = [option.position for option in question.options]
+                if len(option_positions) != len(set(option_positions)):
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Option positions must be unique")
+                correct_count = sum(1 for option in question.options if option.is_correct)
+                if correct_count != 1:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Question must have exactly one correct option (found {correct_count})",
+                    )
+
+        changes = data.model_dump(exclude_unset=True, exclude={"questions", "task_points"})
+        for field, val in changes.items():
             setattr(exam, field, val)
 
         if exam.end_at <= exam.start_at:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_at must be strictly after start_at")
+
+        if data.questions is not None:
+            exam.total_marks = sum(question.marks for question in data.questions)
+            exam.questions.clear()
+            await self.db.flush()
+            for question_data in data.questions:
+                exam.questions.append(
+                    Question(
+                        text=question_data.text,
+                        marks=question_data.marks,
+                        position=question_data.position,
+                        explanation=question_data.explanation,
+                        options=[
+                            QuestionOption(
+                                text=option.text,
+                                is_correct=option.is_correct,
+                                position=option.position,
+                            )
+                            for option in question_data.options
+                        ],
+                    )
+                )
+
+        if exam.pass_marks > exam.total_marks:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="pass_marks cannot be greater than the total marks",
+            )
+
+        if data.task_points is not None:
+            task = await self.task_repo.get_by_exam_id(exam.id)
+            if data.task_points > 0:
+                await self._set_exam_task(exam, user, data.task_points)
+            elif task:
+                task.status = TaskStatus.ARCHIVED
+
+        if data.course_id is not None:
+            task = await self.task_repo.get_by_exam_id(exam.id)
+            if task:
+                task.course_id = data.course_id
 
         return await self.exam_repo.update(exam)
 
@@ -190,30 +317,36 @@ class ExamService:
 
         exam.status = ExamStatus.PUBLISHED
 
-        # Auto-create or link exam task if task_points > 0
-        if data.task_points > 0:
-            existing_task = await self.task_repo.get_by_exam_id(exam.id)
-            if existing_task:
-                existing_task.points = data.task_points
-                existing_task.status = TaskStatus.ACTIVE
-            else:
-                new_task = Task(
-                    course_id=exam.course_id,
-                    created_by=user.id,
-                    type=TaskType.EXAM,
-                    exam_id=exam.id,
-                    title=f"Pass {exam.title}",
-                    description=f"Earn {data.task_points} Task Points by achieving a passing score on {exam.title}.",
-                    points=data.task_points,
-                    verification=TaskVerification.AUTO,
-                    due_at=exam.end_at,
-                    status=TaskStatus.ACTIVE,
-                )
-                self.db.add(new_task)
+        await self._set_exam_task(exam, user, data.task_points)
 
         await self.db.commit()
         await self.db.refresh(exam)
         return exam
+
+    async def _set_exam_task(self, exam: Exam, user: User, task_points: int) -> None:
+        if task_points <= 0:
+            return
+
+        existing_task = await self.task_repo.get_by_exam_id(exam.id)
+        if existing_task:
+            existing_task.points = task_points
+            existing_task.status = TaskStatus.ACTIVE
+            return
+
+        self.db.add(
+            Task(
+                course_id=exam.course_id,
+                created_by=user.id,
+                type=TaskType.EXAM,
+                exam_id=exam.id,
+                title=f"Pass {exam.title}",
+                description=f"Earn {task_points} Task Points by achieving a passing score on {exam.title}.",
+                points=task_points,
+                verification=TaskVerification.AUTO,
+                due_at=exam.end_at,
+                status=TaskStatus.ACTIVE,
+            )
+        )
 
     async def close_exam(self, exam_id: uuid.UUID, user: User) -> Exam:
         exam = await self.exam_repo.get_by_id(exam_id)
@@ -230,6 +363,41 @@ class ExamService:
 
         exam.status = ExamStatus.CLOSED
         return await self.exam_repo.update(exam)
+
+    async def delete_exam(self, exam_id: uuid.UUID, user: User) -> None:
+        exam = await self.exam_repo.get_by_id(exam_id)
+        if not exam:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found")
+
+        course = await self.course_repo.get_by_id(exam.course_id)
+        if user.role == UserRole.TEACHER and course and not await self.course_repo.is_teacher_assigned(
+            course.id, user.id
+        ):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+        attempt_count = await self.db.scalar(
+            select(func.count(ExamAttempt.id)).where(ExamAttempt.exam_id == exam.id)
+        )
+        if attempt_count:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot delete an exam with student attempts",
+            )
+
+        task = await self.task_repo.get_by_exam_id(exam.id)
+        if task:
+            completion_count = await self.db.scalar(
+                select(func.count(TaskCompletion.id)).where(TaskCompletion.task_id == task.id)
+            )
+            if completion_count:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Cannot delete an exam with recorded task completions",
+                )
+            await self.db.delete(task)
+
+        await self.db.delete(exam)
+        await self.db.commit()
 
     async def start_attempt(self, exam_id: uuid.UUID, student: User) -> StartAttemptResponse:
         exam = await self.exam_repo.get_by_id(exam_id)
