@@ -27,13 +27,13 @@ function createCsp(nonce: string) {
   }
   const directives = [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://*.clerk.accounts.dev https://*.clerk.com https://www.youtube.com https://s.ytimg.com`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://*.clerk.accounts.dev https://*.clerk.com https://challenges.cloudflare.com https://www.youtube.com https://s.ytimg.com`,
     `style-src 'self' 'nonce-${nonce}' https://fonts.googleapis.com`,
     "style-src-attr 'unsafe-inline'",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data: https://fonts.gstatic.com",
-    `connect-src 'self' ${apiOrigin} https://*.clerk.accounts.dev https://*.clerk.com https://api.clerk.com https://www.youtube.com https://*.googleapis.com https://*.googlevideo.com wss:`,
-    "frame-src https://www.youtube.com https://www.youtube-nocookie.com https://*.clerk.accounts.dev https://*.clerk.com",
+    `connect-src 'self' ${apiOrigin} https://*.clerk.accounts.dev https://*.clerk.com https://api.clerk.com https://challenges.cloudflare.com https://www.youtube.com https://*.googleapis.com https://*.googlevideo.com wss:`,
+    "frame-src https://www.youtube.com https://www.youtube-nocookie.com https://*.clerk.accounts.dev https://*.clerk.com https://challenges.cloudflare.com",
     "form-action 'self' https://*.clerk.accounts.dev https://*.clerk.com",
     "base-uri 'self'",
     "object-src 'none'",
@@ -48,7 +48,7 @@ function addSecurityHeaders(response: NextResponse, nonce?: string) {
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-  response.headers.set("Cross-Origin-Opener-Policy", "same-origin");
+  response.headers.set("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
   response.headers.set("Cross-Origin-Resource-Policy", "same-site");
   if (process.env.NODE_ENV === "production" && process.env.NEXT_PUBLIC_SITE_URL?.startsWith("https://")) {
     response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
