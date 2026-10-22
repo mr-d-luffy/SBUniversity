@@ -168,7 +168,7 @@ export function ApprovalQueue({ initial }: { initial?: PendingTaskReview[] }) {
                   <a
                     href={s.submission_url}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 hover:underline"
                   >
                     <span>View Submission Project</span>

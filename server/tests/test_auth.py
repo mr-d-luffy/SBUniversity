@@ -1,5 +1,6 @@
 import pytest
 from httpx import AsyncClient
+from app.db.models.user import UserRole
 
 
 @pytest.mark.asyncio
@@ -18,6 +19,60 @@ async def test_get_me_student(client: AsyncClient):
     data = resp.json()
     assert data["email"] == "student1@sbuniversity.edu"
     assert data["role"] == "student"
+
+
+@pytest.mark.asyncio
+async def test_database_role_is_authoritative_over_stale_token_metadata(
+    client: AsyncClient,
+    db_session,
+):
+    db_session.test_student1.role = UserRole.TEACHER
+    await db_session.commit()
+
+    response = await client.get(
+        "/me",
+        headers={"Authorization": "Bearer dev-token-student-u_student1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["role"] == "teacher"
+
+
+@pytest.mark.asyncio
+async def test_role_change_fails_without_clerk_sync_and_keeps_database_role(
+    client: AsyncClient,
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.core.config import settings
+
+    class ClerkResponse:
+        status_code = 500
+
+    class ClerkClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return None
+
+        async def patch(self, url: str, headers: dict[str, str], json: dict[str, str]):
+            return ClerkResponse()
+
+    monkeypatch.setattr(settings, "CLERK_SECRET_KEY", "test-secret")
+    monkeypatch.setattr(
+        "app.services.user_service.httpx.AsyncClient",
+        lambda timeout: ClerkClient(),
+    )
+
+    response = await client.patch(
+        f"/admin/users/{db_session.test_student1.id}/role",
+        json={"role": "teacher"},
+        headers={"Authorization": "Bearer dev-token-admin-u_admin"},
+    )
+
+    assert response.status_code == 502
+    assert db_session.test_student1.role == UserRole.STUDENT
 
 
 @pytest.mark.asyncio

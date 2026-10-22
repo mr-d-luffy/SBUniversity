@@ -14,6 +14,7 @@ import {
   FileCheck,
   FileText,
   GraduationCap,
+  Info,
   IdCard,
   LayoutDashboard,
   LogOut,
@@ -121,7 +122,7 @@ export function Shell({ role, name, demo, children }: { role: Role; name: string
 
   const nav = (
     <nav id="portal-navigation" aria-label="Main Navigation" className={clsx("flex flex-col gap-1.5 py-4", collapsed ? "px-2" : "px-3")}>
-      {NAV[role].map(({ href, label, icon: Icon, badge }) => {
+      {[...NAV[role], { href: "/about", label: "About", icon: Info }].map(({ href, label, icon: Icon, badge }) => {
         const active = path === href || path.startsWith(href + "/");
         return (
           <Link

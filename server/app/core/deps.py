@@ -1,11 +1,12 @@
 import uuid
-from typing import AsyncGenerator, List, Optional, Union
-from fastapi import Depends, HTTPException, Query, Request, status
+from typing import AsyncGenerator, List, Union
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.core.config import settings
+from app.core.logging import logger
 from app.core.redis import get_redis_client
 from app.core.security import SecurityError, verify_clerk_token
 from app.db.models.course import Course, Enrollment, EnrollmentStatus
@@ -19,18 +20,17 @@ security = HTTPBearer(auto_error=False)
 async def get_current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    token_query: Optional[str] = Query(None, alias="token"),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    token = None
-    if credentials and credentials.credentials:
-        token = credentials.credentials
-    elif token_query:
-        token = token_query
-    elif request.query_params.get("token"):
-        token = request.query_params.get("token")
+    token = credentials.credentials if credentials and credentials.credentials else None
 
     if not token:
+        logger.warning(
+            "Authentication denied path=%s client=%s request_id=%s reason=missing_token",
+            request.url.path,
+            request.client.host if request.client else "unknown",
+            getattr(request.state, "request_id", "unknown"),
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
@@ -47,6 +47,13 @@ async def get_current_user(
     try:
         payload = await verify_clerk_token(token)
     except SecurityError as e:
+        logger.warning(
+            "Authentication denied path=%s client=%s request_id=%s code=%s",
+            request.url.path,
+            request.client.host if request.client else "unknown",
+            getattr(request.state, "request_id", "unknown"),
+            e.code,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
@@ -106,7 +113,15 @@ async def get_current_user(
         # Check if we should auto-provision a basic student record or if in dev mode
         email = payload.get("email") or payload.get("email_address") or f"{clerk_user_id}@sbuniversity.edu"
         name = payload.get("name") or payload.get("full_name") or "SiliconBrains University User"
-        role_claim = payload.get("role") or payload.get("public_metadata", {}).get("role")
+        metadata = (
+            payload.get("public_metadata")
+            or payload.get("publicMetadata")
+            or payload.get("metadata")
+            or {}
+        )
+        role_claim = payload.get("role") or (
+            metadata.get("role") if isinstance(metadata, dict) else None
+        )
 
         # If role is not in the JWT token, fetch directly from Clerk Backend API
         if not role_claim and settings.CLERK_SECRET_KEY:
@@ -200,31 +215,8 @@ async def get_current_user(
             await db.commit()
             user = await reload_user(user)
     else:
-        # User exists in DB. If JWT or Clerk has role metadata, ensure DB stays in sync
-        role_claim = payload.get("role") or payload.get("public_metadata", {}).get("role")
-        if not role_claim and settings.CLERK_SECRET_KEY:
-            try:
-                import httpx
-                async with httpx.AsyncClient(timeout=3.0) as client:
-                    resp = await client.get(
-                        f"https://api.clerk.com/v1/users/{clerk_user_id}",
-                        headers={"Authorization": f"Bearer {settings.CLERK_SECRET_KEY}"},
-                    )
-                    if resp.status_code == 200:
-                        role_claim = resp.json().get("public_metadata", {}).get("role")
-            except Exception:
-                pass
-
-        if role_claim:
-            try:
-                claimed_role = UserRole(role_claim)
-                if user.role != claimed_role:
-                    user.role = claimed_role
-                    await db.commit()
-                    user = await reload_user(user)
-            except ValueError:
-                pass
-
+        # The database role is authoritative for existing accounts; JWT metadata
+        # may be stale after a privileged role change.
         # If existing student lacks a profile, auto-create it now
         if user.role == UserRole.STUDENT and not await student_profile_exists(user.id):
             student_code = await user_repo.next_student_code(2026)
@@ -275,8 +267,19 @@ def require_role(allowed_roles: Union[UserRole, List[UserRole]]):
     else:
         roles = allowed_roles
 
-    async def role_checker(current_user: User = Depends(get_current_user)) -> User:
+    async def role_checker(
+        request: Request,
+        current_user: User = Depends(get_current_user),
+    ) -> User:
         if current_user.role not in roles:
+            logger.warning(
+                "Authorization denied actor_id=%s role=%s required=%s path=%s request_id=%s",
+                current_user.id,
+                current_user.role.value,
+                ",".join(role.value for role in roles),
+                request.url.path,
+                getattr(request.state, "request_id", "unknown"),
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={

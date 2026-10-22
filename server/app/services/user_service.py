@@ -83,8 +83,6 @@ class UserService:
                 )
 
         old_role = target_user.role
-        target_user.role = new_role
-
         # Sync with Clerk Backend API
         if settings.CLERK_SECRET_KEY and target_user.clerk_user_id:
             try:
@@ -93,11 +91,20 @@ class UserService:
                 payload = {"public_metadata": {"role": new_role.value}}
                 async with httpx.AsyncClient(timeout=5.0) as client:
                     resp = await client.patch(url, headers=headers, json=payload)
-                    if resp.status_code != 200:
-                        logger.warning("Clerk role sync returned %d: %s", resp.status_code, resp.text)
-            except Exception as e:
+                    if not 200 <= resp.status_code < 300:
+                        logger.error("Clerk role sync failed with status %d", resp.status_code)
+                        raise HTTPException(
+                            status_code=status.HTTP_502_BAD_GATEWAY,
+                            detail="Role update could not be synchronized. Please try again.",
+                        )
+            except httpx.RequestError as e:
                 logger.error("Failed to sync role with Clerk API: %s", e)
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Role update could not be synchronized. Please try again.",
+                ) from e
 
+        target_user.role = new_role
         # Audit log
         await self.audit_repo.log(
             actor_id=admin.id,

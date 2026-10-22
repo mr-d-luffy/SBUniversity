@@ -26,6 +26,7 @@ TestingSessionLocal = async_sessionmaker(
 # Enable auth bypass for test dev tokens
 settings.ALLOW_DEV_AUTH_BYPASS = True
 settings.RATE_LIMIT_ENABLED = False
+settings.CLERK_SECRET_KEY = None
 
 
 @pytest.fixture(autouse=True)

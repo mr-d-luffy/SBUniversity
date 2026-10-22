@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import time
 from typing import Any, Dict, Optional
 import httpx
@@ -89,12 +90,17 @@ async def verify_clerk_token(token: str) -> Dict[str, Any]:
     if not token:
         raise SecurityError("Missing authorization token")
 
-    # Support dev token bypass for testing/mocking if explicitly enabled
-    if settings.ALLOW_DEV_AUTH_BYPASS and token.startswith("dev-token-"):
+    # Support dev token bypass for testing/mocking only outside production.
+    if (
+        settings.ALLOW_DEV_AUTH_BYPASS
+        and not settings.is_production
+        and token.startswith("dev-token-")
+    ):
         # Format: dev-token-{role}-{clerk_id}
-        parts = token.split("-")
-        role = parts[2] if len(parts) > 2 else "student"
-        clerk_id = parts[3] if len(parts) > 3 else f"user_{role}"
+        match = re.fullmatch(r"dev-token-(student|teacher|admin)-([A-Za-z0-9_-]{1,128})", token)
+        if not match:
+            raise SecurityError("Invalid development token", code="INVALID_TOKEN")
+        role, clerk_id = match.groups()
         return {
             "sub": clerk_id,
             "role": role,
@@ -105,18 +111,14 @@ async def verify_clerk_token(token: str) -> Dict[str, Any]:
 
     try:
         unverified_header = jwt.get_unverified_header(token)
-    except Exception as e:
-        raise SecurityError(f"Invalid token header: {str(e)}")
+    except jwt.InvalidTokenError:
+        raise SecurityError("Invalid token header", code="INVALID_TOKEN")
+
+    if unverified_header.get("alg") != "RS256":
+        raise SecurityError("Unsupported token signing algorithm", code="INVALID_TOKEN")
 
     kid = unverified_header.get("kid")
     if not kid:
-        # Check if unverified token can be decoded in dev mode if keys are unavailable
-        if settings.DEBUG and not settings.is_production:
-            try:
-                claims = jwt.decode(token, options={"verify_signature": False})
-                return claims
-            except Exception:
-                pass
         raise SecurityError("Token missing key ID (kid)")
 
     jwks = await get_clerk_jwks()
@@ -130,24 +132,29 @@ async def verify_clerk_token(token: str) -> Dict[str, Any]:
         matching_key = next((k for k in keys if k.get("kid") == kid), None)
 
     if not matching_key:
-        if settings.DEBUG and not settings.is_production:
-            logger.warning("JWKS key not found; decoding without signature verification in DEBUG mode")
-            return jwt.decode(token, options={"verify_signature": False})
         raise SecurityError("Unable to verify token signature: public key not found")
 
     public_key = RSAAlgorithm.from_jwk(json.dumps(matching_key))
 
     decode_kwargs: Dict[str, Any] = {
         "algorithms": ["RS256"],
-        "options": {"verify_exp": True},
+        "options": {
+            "verify_exp": True,
+            "verify_iat": True,
+            "require": ["exp", "iat", "sub"],
+        },
     }
     if settings.CLERK_ISSUER:
         decode_kwargs["issuer"] = settings.CLERK_ISSUER
+    elif settings.is_production:
+        raise SecurityError("Token issuer validation is not configured")
+    if settings.CLERK_AUDIENCE:
+        decode_kwargs["audience"] = settings.CLERK_AUDIENCE
 
     try:
         payload = jwt.decode(token, public_key, **decode_kwargs)
         return payload
     except jwt.ExpiredSignatureError:
         raise SecurityError("Token has expired", code="TOKEN_EXPIRED")
-    except jwt.InvalidTokenError as e:
-        raise SecurityError(f"Invalid token: {str(e)}", code="INVALID_TOKEN")
+    except jwt.InvalidTokenError:
+        raise SecurityError("Invalid token", code="INVALID_TOKEN")

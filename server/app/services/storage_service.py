@@ -1,5 +1,5 @@
-import os
 from pathlib import Path
+from pathlib import PurePosixPath
 from typing import Optional
 from app.core.config import settings
 from app.core.logging import logger
@@ -17,10 +17,28 @@ LOCAL_STORAGE_DIR = Path("storage_local")
 LOCAL_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _validate_storage_key(path: str) -> None:
+    key = PurePosixPath(path)
+    if not path or "\\" in path or key.is_absolute() or ".." in key.parts:
+        raise ValueError("Invalid storage path")
+
+
+def _local_storage_path(path: str) -> Path:
+    root = LOCAL_STORAGE_DIR.resolve()
+    candidate = Path(path)
+    resolved = candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("Storage path escapes the local storage directory") from exc
+    return resolved
+
+
 class StorageService:
     @staticmethod
     async def upload_file(path: str, content: bytes, content_type: str = "application/pdf") -> str:
-        """Uploads file to Supabase Storage bucket, or local disk fallback."""
+        """Uploads to Supabase Storage, with a development-only local fallback."""
+        _validate_storage_key(path)
         if supabase_client:
             try:
                 bucket = settings.SUPABASE_STORAGE_BUCKET
@@ -32,10 +50,14 @@ class StorageService:
                 logger.info("Uploaded %s to Supabase Storage", path)
                 return path
             except Exception as e:
-                logger.warning("Failed uploading to Supabase Storage: %s. Falling back to local.", e)
+                logger.error("Failed uploading to Supabase Storage: %s", e)
+                if settings.is_production:
+                    raise RuntimeError("Could not upload stored file") from e
 
-        # Local storage fallback
-        local_path = LOCAL_STORAGE_DIR / path
+        if settings.is_production:
+            raise RuntimeError("Supabase Storage is required in production")
+
+        local_path = _local_storage_path(path)
         local_path.parent.mkdir(parents=True, exist_ok=True)
         with open(local_path, "wb") as f:
             f.write(content)
@@ -43,18 +65,21 @@ class StorageService:
 
     @staticmethod
     async def download_file(path: str) -> Optional[bytes]:
-        """Downloads file bytes from Supabase Storage or local disk fallback."""
-        if supabase_client:
+        """Downloads from Supabase Storage, with a development-only local fallback."""
+        local_path = _local_storage_path(path)
+        if supabase_client and not Path(path).is_absolute():
+            _validate_storage_key(path)
             try:
                 bucket = settings.SUPABASE_STORAGE_BUCKET
                 res = supabase_client.storage.from_(bucket).download(path)
                 return res
             except Exception as e:
-                logger.warning("Failed downloading from Supabase Storage: %s. Checking local.", e)
+                logger.error("Failed downloading from Supabase Storage: %s", e)
+                if settings.is_production:
+                    raise RuntimeError("Could not download stored file") from e
 
-        local_path = Path(path)
-        if not local_path.is_absolute():
-            local_path = LOCAL_STORAGE_DIR / path
+        if settings.is_production:
+            raise RuntimeError("Supabase Storage is required in production")
         if local_path.exists():
             with open(local_path, "rb") as f:
                 return f.read()
@@ -65,6 +90,7 @@ class StorageService:
     async def delete_file(path: str) -> None:
         """Deletes a stored object from Supabase Storage or local disk."""
         if supabase_client and not Path(path).is_absolute():
+            _validate_storage_key(path)
             try:
                 bucket = settings.SUPABASE_STORAGE_BUCKET
                 supabase_client.storage.from_(bucket).remove([path])
@@ -73,9 +99,9 @@ class StorageService:
                 logger.error("Failed deleting %s from Supabase Storage: %s", path, e)
                 raise RuntimeError("Could not delete stored file") from e
 
-        local_path = Path(path)
-        if not local_path.is_absolute():
-            local_path = LOCAL_STORAGE_DIR / path
+        if settings.is_production:
+            raise RuntimeError("Supabase Storage is required in production")
+        local_path = _local_storage_path(path)
         try:
             local_path.unlink(missing_ok=True)
         except OSError as e:

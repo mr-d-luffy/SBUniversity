@@ -11,3 +11,16 @@
 /server/.venv
 /server/.env
 /server/.pytest_cache
+
+# Secrets, signing material, and local environment configuration
+.env
+.env.*
+!.env.example
+*.keystore
+*.jks
+keystore.properties
+local.properties
+google-services.json
+*.pem
+*.p12
+secrets/

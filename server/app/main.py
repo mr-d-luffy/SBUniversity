@@ -1,6 +1,8 @@
 import asyncio
+import uuid
 from contextlib import asynccontextmanager
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -77,6 +79,68 @@ async def lifespan(app: FastAPI):
     # Startup
     setup_logging()
     logger.info("Starting %s in %s mode...", settings.APP_NAME, settings.APP_ENV)
+    if settings.is_production:
+        missing = [
+            name
+            for name, value in (
+                ("CLERK_ISSUER", settings.CLERK_ISSUER),
+                ("CLERK_AUDIENCE", settings.CLERK_AUDIENCE),
+                ("CLERK_SECRET_KEY", settings.CLERK_SECRET_KEY),
+                ("CLERK_WEBHOOK_SECRET", settings.CLERK_WEBHOOK_SECRET),
+                ("SUPABASE_URL", settings.SUPABASE_URL),
+                ("SUPABASE_SERVICE_KEY", settings.SUPABASE_SERVICE_KEY),
+            )
+            if not value
+        ]
+        if settings.DEBUG or settings.ALLOW_DEV_AUTH_BYPASS:
+            raise RuntimeError("DEBUG and ALLOW_DEV_AUTH_BYPASS must be disabled in production")
+        if missing:
+            raise RuntimeError(
+                "Required production security settings are missing: " + ", ".join(missing)
+            )
+        invalid_origins = []
+        for origin in settings.CORS_ORIGINS:
+            parsed = urlsplit(origin)
+            if (
+                origin == "*"
+                or parsed.scheme != "https"
+                or not parsed.netloc
+                or "*" in parsed.netloc
+                or parsed.username
+                or parsed.password
+                or parsed.path not in ("", "/")
+                or parsed.query
+                or parsed.fragment
+            ):
+                invalid_origins.append(origin)
+        if not settings.CORS_ORIGINS or invalid_origins:
+            raise RuntimeError("Production CORS_ORIGINS must contain only exact HTTPS origins")
+        jwks_url = settings.CLERK_JWKS_URL or "https://api.clerk.com/v1/jwks"
+        if urlsplit(jwks_url).scheme != "https":
+            raise RuntimeError("CLERK_JWKS_URL must use HTTPS in production")
+        if urlsplit(settings.SUPABASE_URL or "").scheme != "https":
+            raise RuntimeError("SUPABASE_URL must use HTTPS in production")
+        for setting_name, configured_url in (
+            ("DATABASE_URL", settings.DATABASE_URL),
+            ("REDIS_URL", settings.REDIS_URL),
+        ):
+            hostname = urlsplit(configured_url).hostname
+            if not hostname or hostname in {"localhost", "127.0.0.1", "0.0.0.0", "::1"}:
+                raise RuntimeError(f"{setting_name} must point to a production service")
+        database_query = parse_qs(urlsplit(settings.DATABASE_URL).query)
+        database_tls = database_query.get("sslmode", database_query.get("ssl", []))
+        if not database_tls or database_tls[0].lower() not in {
+            "require",
+            "verify-ca",
+            "verify-full",
+            "true",
+            "1",
+        }:
+            raise RuntimeError("DATABASE_URL must require TLS in production")
+        if urlsplit(settings.REDIS_URL).scheme != "rediss":
+            raise RuntimeError("REDIS_URL must use TLS (rediss://) in production")
+        if not settings.RATE_LIMIT_ENABLED:
+            raise RuntimeError("RATE_LIMIT_ENABLED must be enabled in production")
 
     # Initialize Redis connection
     await get_redis_client()
@@ -127,16 +191,40 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|0\.0\.0\.0|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+)(:\d+)?$",
+    allow_origin_regex=None if settings.is_production else r"^https?://(localhost|127\.0\.0\.1|0\.0\.0\.0|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+)(:\d+)?$",
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    request_id = uuid.uuid4().hex
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if settings.is_production:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 
 # Exception Handlers (Standard error shape from Docs/architecture.md & Docs/rules.md)
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
+    if exc.status_code in {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN}:
+        logger.warning(
+            "Access denied status=%d actor_id=%s client=%s path=%s request_id=%s",
+            exc.status_code,
+            getattr(request.state, "user_id", "anonymous"),
+            request.client.host if request.client else "unknown",
+            request.url.path,
+            getattr(request.state, "request_id", "unknown"),
+        )
     if isinstance(exc.detail, dict) and "error" in exc.detail:
         return JSONResponse(status_code=exc.status_code, content=exc.detail)
 
@@ -154,13 +242,18 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.warning(
+        "Request validation failed path=%s request_id=%s",
+        request.url.path,
+        getattr(request.state, "request_id", "unknown"),
+    )
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "error": {
                 "code": "VALIDATION_ERROR",
                 "message": "Invalid request parameters or payload.",
-                "details": jsonable_encoder(exc.errors()),
+                "details": None if settings.is_production else jsonable_encoder(exc.errors()),
             }
         },
     )
@@ -223,4 +316,3 @@ async def health_check():
 
 # Mount API Routers
 app.include_router(api_v1_router, prefix=settings.API_V1_PREFIX)
-app.include_router(api_v1_router)

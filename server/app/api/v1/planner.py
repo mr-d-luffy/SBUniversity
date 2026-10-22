@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_user
+from app.core.uploads import read_audio_upload
 from app.db.models.planner import PlannerEntry, PlannerEntryKind, PlannerNoteShape
 from app.db.models.user import User
 from app.db.session import get_db
@@ -19,15 +20,6 @@ from app.services.storage_service import StorageService
 router = APIRouter(prefix="/planner", tags=["Learn Planner"])
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
-AUDIO_TYPES = {
-    "audio/webm": "webm",
-    "audio/ogg": "ogg",
-    "audio/mp4": "m4a",
-    "audio/mpeg": "mp3",
-    "audio/wav": "wav",
-    "audio/x-wav": "wav",
-    "audio/aac": "aac",
-}
 
 
 def get_service(db: AsyncSession) -> PlannerService:
@@ -109,22 +101,7 @@ async def create_voice_note(
     if not title:
         raise HTTPException(status_code=422, detail="Voice note title cannot be empty")
 
-    media_type = (file.content_type or "").split(";", maxsplit=1)[0].strip().lower()
-    extension = AUDIO_TYPES.get(media_type)
-    if extension is None:
-        raise HTTPException(
-            status_code=415,
-            detail="Unsupported audio format. Use WebM, Ogg, MP4, MP3, WAV, or AAC.",
-        )
-
-    contents = await file.read(MAX_AUDIO_BYTES + 1)
-    await file.close()
-    if not contents:
-        raise HTTPException(status_code=400, detail="Audio recording is empty")
-    if len(contents) > MAX_AUDIO_BYTES:
-        raise HTTPException(
-            status_code=413, detail="Voice notes cannot exceed 25 MB"
-        )
+    contents, media_type, extension = await read_audio_upload(file, MAX_AUDIO_BYTES)
 
     entry_id = uuid.uuid4()
     storage_path = (

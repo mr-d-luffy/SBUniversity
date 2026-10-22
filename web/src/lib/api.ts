@@ -103,39 +103,26 @@ export async function api<T>(
  */
 export async function downloadAndOpenPdf(path: string, filename: string, token?: string): Promise<void> {
   const base = getBaseUrl();
-  const urlWithToken = token 
-    ? `${base}${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`
-    : `${base}${path}`;
-
-  try {
-    const headers = new Headers();
-    if (token) {
-      headers.set("Authorization", `Bearer ${token}`);
-    }
-    const res = await fetch(`${base}${path}`, { headers });
-    if (res.ok) {
-      const blob = await res.blob();
-      const pdfBlob = new Blob([blob], { type: "application/pdf" });
-      const blobUrl = URL.createObjectURL(pdfBlob);
-
-      // Open PDF in a new browser tab
-      window.open(blobUrl, "_blank");
-
-      // Direct download trigger
-      const anchor = document.createElement("a");
-      anchor.href = blobUrl;
-      anchor.download = filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-      return;
-    }
-  } catch (err) {
-    console.warn("Direct blob download failed, falling back to window.open", err);
+  const headers = new Headers();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  const res = await fetch(`${base}${path}`, { headers });
+  if (!res.ok) {
+    throw new ApiError(res.status, `PDF download failed with status ${res.status}.`);
   }
 
-  // Fallback: Open in new window directly
-  window.open(urlWithToken, "_blank");
+  const blobUrl = URL.createObjectURL(
+    new Blob([await res.blob()], { type: "application/pdf" }),
+  );
+  window.open(blobUrl, "_blank", "noopener,noreferrer");
+  const anchor = document.createElement("a");
+  anchor.href = blobUrl;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
 }
 
 /**

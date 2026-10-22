@@ -1,9 +1,11 @@
 import mimetypes
+import uuid
 from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi import HTTPException, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_user
+from app.core.uploads import read_image_upload
 from app.db.models.user import User
 from app.db.session import get_db
 from app.schemas.user import UserResponse, UserUpdate
@@ -11,6 +13,7 @@ from app.services.storage_service import StorageService
 from app.services.user_service import UserService
 
 router = APIRouter(prefix="/me", tags=["Me"])
+MAX_PROFILE_PHOTO_BYTES = 5 * 1024 * 1024
 
 
 @router.get("/photo")
@@ -30,7 +33,11 @@ async def get_profile_photo(current_user: User = Depends(get_current_user)):
     return Response(
         content=contents,
         media_type=media_type,
-        headers={"Cache-Control": "private, max-age=300"},
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": "inline",
+        },
     )
 
 
@@ -55,11 +62,12 @@ async def upload_profile_photo(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    contents = await file.read()
-    ext = file.filename.split(".")[-1] if file.filename and "." in file.filename else "jpg"
-    filename = f"avatars/{current_user.id}.{ext}"
+    contents, media_type, extension = await read_image_upload(
+        file, MAX_PROFILE_PHOTO_BYTES
+    )
+    filename = f"avatars/{current_user.id}/{uuid.uuid4()}.{extension}"
 
-    photo_path = await StorageService.upload_file(filename, contents, file.content_type or "image/jpeg")
+    photo_path = await StorageService.upload_file(filename, contents, media_type)
 
     service = UserService(db)
     current_user.avatar_url = photo_path

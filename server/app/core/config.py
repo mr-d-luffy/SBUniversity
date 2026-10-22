@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     CLERK_PUBLISHABLE_KEY: Optional[str] = None
     CLERK_JWKS_URL: Optional[str] = None
     CLERK_ISSUER: Optional[str] = None
+    CLERK_AUDIENCE: Optional[str] = None
     CLERK_WEBHOOK_SECRET: Optional[str] = None
 
     # Redis

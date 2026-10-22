@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "@clerk/nextjs";
 import { Loader2, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -150,7 +151,7 @@ export function TeacherTaskCreator() {
         <Plus size={15} /> Create Task
       </Button>
 
-      {open && (
+      {open && createPortal((
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-2 sm:items-center sm:p-4">
           <button
             type="button"
@@ -364,7 +365,7 @@ export function TeacherTaskCreator() {
             )}
           </div>
         </div>
-      )}
+      ), document.body)}
     </>
   );
 }

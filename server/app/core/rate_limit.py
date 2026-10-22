@@ -1,7 +1,9 @@
-import time
-from fastapi import HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, Response, status
 from app.core.config import settings
-from app.core.redis import get_redis_client
+from app.core.deps import get_current_user
+from app.core.logging import logger
+from app.core.redis import InMemoryRedisFallback, get_redis_client
+from app.db.models.user import User
 
 
 class RateLimiter:
@@ -10,48 +12,73 @@ class RateLimiter:
         self.window = window_seconds
         self.key_prefix = key_prefix
 
-    async def __call__(self, request: Request):
+    async def __call__(
+        self,
+        request: Request,
+        response: Response,
+        current_user: User = Depends(get_current_user),
+    ):
         if not settings.RATE_LIMIT_ENABLED:
             return True
 
-        # Use authenticated user clerk_id or client IP
-        identifier = getattr(request.state, "user_id", None)
-        if not identifier:
-            identifier = request.client.host if request.client else "unknown"
-
-        route = request.url.path
-        redis = await get_redis_client()
-        key = f"{self.key_prefix}:{route}:{identifier}"
-
-        now = int(time.time())
-        window_start = now - self.window
-
         try:
-            # Simple fixed or sliding count
-            current_count_str = await redis.get(key)
-            current_count = int(current_count_str) if current_count_str else 0
+            redis = await get_redis_client()
+            current_counts = []
+            if isinstance(redis, InMemoryRedisFallback):
+                if settings.is_production:
+                    raise RuntimeError("Redis is unavailable for production rate limiting")
+                identifiers = [f"user:{current_user.clerk_user_id}"]
+                if request.client:
+                    identifiers.append(f"ip:{request.client.host}")
+                for identifier in set(identifiers):
+                    key = f"{self.key_prefix}:{request.url.path}:{identifier}"
+                    current_counts.append(await redis.hit_rate_limit(key, self.window))
+            else:
+                script = """
+                local count = redis.call('INCR', KEYS[1])
+                if count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+                return count
+                """
+                identifiers = [f"user:{current_user.clerk_user_id}"]
+                if request.client:
+                    identifiers.append(f"ip:{request.client.host}")
+                for identifier in set(identifiers):
+                    key = f"{self.key_prefix}:{request.url.path}:{identifier}"
+                    current_counts.append(await redis.eval(script, 1, key, self.window))
 
-            if current_count >= self.limit:
+            if any(count > self.limit for count in current_counts):
+                response.headers["Retry-After"] = str(self.window)
+                logger.warning(
+                    "Rate limit exceeded actor_id=%s client=%s path=%s",
+                    current_user.id,
+                    request.client.host if request.client else "unknown",
+                    request.url.path,
+                )
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                     detail={
                         "error": {
                             "code": "RATE_LIMIT_EXCEEDED",
-                            "message": f"Rate limit exceeded. Try again in {self.window} seconds.",
+                            "message": "Too many requests. Please try again later.",
                             "details": None,
                         }
                     },
                 )
-
-            if current_count == 0:
-                await redis.set(key, "1", ex=self.window)
-            else:
-                # Increment
-                await redis.set(key, str(current_count + 1), ex=self.window)
         except HTTPException:
             raise
-        except Exception:
-            # Fail open for reads, but keep going
+        except Exception as exc:
+            logger.error("Rate limiting unavailable for %s: %s", request.url.path, exc)
+            if settings.is_production:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail={
+                        "error": {
+                            "code": "RATE_LIMITER_UNAVAILABLE",
+                            "message": "Service temporarily unavailable.",
+                            "details": None,
+                        }
+                    },
+                ) from exc
             return True
 
         return True

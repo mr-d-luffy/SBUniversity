@@ -271,6 +271,7 @@ export default function Landing() {
           </div>
           <div className="flex flex-wrap justify-center gap-x-5 gap-y-3 sm:justify-end">
             <Link href="/verify" className="hover:underline">Verify Credential</Link>
+            <Link href="/about" className="hover:underline">About & Policies</Link>
             <Link href="/ranking" className="hover:underline">Live Leaderboard</Link>
             <Link href="/notices" className="hover:underline">University Notices</Link>
             <Link href="/sign-in" className="hover:underline">Sign In</Link>

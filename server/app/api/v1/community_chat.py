@@ -3,8 +3,9 @@ from typing import List
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_role
 from app.core.rate_limit import RateLimiter
+from app.core.uploads import read_audio_upload
 from app.db.models.user import User, UserRole
 from app.db.session import get_db
 from app.repositories.community_chat_repository import CommunityChatRepository
@@ -18,15 +19,6 @@ from app.services.community_chat_service import CommunityChatService
 
 router = APIRouter(prefix="/community-chat", tags=["Community Chat"])
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
-AUDIO_TYPES = {
-    "audio/webm": "webm",
-    "audio/ogg": "ogg",
-    "audio/mp4": "m4a",
-    "audio/mpeg": "mp3",
-    "audio/wav": "wav",
-    "audio/x-wav": "wav",
-    "audio/aac": "aac",
-}
 
 
 def get_service(db: AsyncSession) -> CommunityChatService:
@@ -44,7 +36,7 @@ async def list_conversations(
 @router.get("/students", response_model=List[CommunityStudentOption])
 async def list_students(
     search: str = Query(default="", max_length=100),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.STUDENT)),
     db: AsyncSession = Depends(get_db),
 ):
     return await get_service(db).list_students(current_user, search)
@@ -116,17 +108,7 @@ async def send_audio_message(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    media_type = (file.content_type or "").split(";", maxsplit=1)[0].strip().lower()
-    extension = AUDIO_TYPES.get(media_type)
-    if extension is None:
-        raise HTTPException(
-            status_code=415,
-            detail="Unsupported audio format. Use WebM, Ogg, MP4, MP3, WAV, or AAC.",
-        )
-    contents = await file.read(MAX_AUDIO_BYTES + 1)
-    await file.close()
-    if len(contents) > MAX_AUDIO_BYTES:
-        raise HTTPException(status_code=413, detail="Voice messages cannot exceed 25 MB")
+    contents, media_type, extension = await read_audio_upload(file, MAX_AUDIO_BYTES)
     return await get_service(db).send_audio(
         current_user, conversation_id, contents, media_type, extension
     )

@@ -123,6 +123,7 @@ async def test_voice_notes_are_private_and_audio_is_authenticated(
     monkeypatch: pytest.MonkeyPatch,
 ):
     objects: dict[str, bytes] = {}
+    audio_bytes = b"\x1a\x45\xdf\xa3test-audio-data"
 
     async def upload(path: str, content: bytes, content_type: str) -> str:
         objects[path] = content
@@ -141,18 +142,18 @@ async def test_voice_notes_are_private_and_audio_is_authenticated(
     created = await client.post(
         "/planner/entries/voice-note?title=Lecture%20thought",
         headers=auth("student-u_student1"),
-        files={"file": ("thought.webm", b"test-audio-data", "audio/webm")},
+        files={"file": ("thought.webm", audio_bytes, "audio/webm")},
     )
     assert created.status_code == 201
     note = created.json()
     assert note["kind"] == PlannerEntryKind.VOICE_NOTE.value
-    assert note["audio_size_bytes"] == len(b"test-audio-data")
+    assert note["audio_size_bytes"] == len(audio_bytes)
 
     playback = await client.get(
         note["audio_url"], headers=auth("student-u_student1")
     )
     assert playback.status_code == 200
-    assert playback.content == b"test-audio-data"
+    assert playback.content == audio_bytes
     assert playback.headers["content-type"] == "audio/webm"
 
     forbidden = await client.get(
@@ -176,7 +177,7 @@ async def test_voice_notes_are_private_and_audio_is_authenticated(
     empty_title = await client.post(
         "/planner/entries/voice-note?title=%20%20",
         headers=auth("student-u_student1"),
-        files={"file": ("thought.webm", b"test-audio-data", "audio/webm")},
+        files={"file": ("thought.webm", audio_bytes, "audio/webm")},
     )
     assert empty_title.status_code == 422
     assert len(objects) == 0

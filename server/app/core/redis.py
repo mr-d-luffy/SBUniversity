@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 from typing import Any, Dict, List, Optional, Tuple
 import redis.asyncio as aioredis
 from app.core.config import settings
@@ -13,8 +14,19 @@ class InMemoryRedisFallback:
     """In-memory fallback for local dev or testing when Redis is not running."""
     def __init__(self):
         self._store: Dict[str, Any] = {}
+        self._expiry: Dict[str, float] = {}
         self._zsets: Dict[str, Dict[str, float]] = {}
         self._subscribers: Dict[str, List[asyncio.Queue]] = {}
+
+    async def hit_rate_limit(self, key: str, window_seconds: int) -> int:
+        now = time.monotonic()
+        if self._expiry.get(key, 0) <= now:
+            self._store.pop(key, None)
+            self._store[key] = 1
+            self._expiry[key] = now + window_seconds
+        else:
+            self._store[key] = int(self._store.get(key, 0)) + 1
+        return int(self._store[key])
 
     async def get(self, key: str) -> Optional[str]:
         return self._store.get(key)

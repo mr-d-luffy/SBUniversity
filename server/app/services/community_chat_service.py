@@ -81,7 +81,10 @@ class CommunityChatService:
     async def list_students(
         self, current_user: User, search: str = ""
     ) -> List[CommunityStudentOption]:
-        if current_user.role not in {UserRole.STUDENT, UserRole.TEACHER, UserRole.ADMIN} or current_user.status != UserStatus.ACTIVE:
+        if (
+            current_user.role != UserRole.STUDENT
+            or current_user.status != UserStatus.ACTIVE
+        ):
             raise HTTPException(status_code=403, detail="This chat action is not allowed")
         await self.cleanup_expired()
         students = await self.repo.list_active_students(current_user.id, search)

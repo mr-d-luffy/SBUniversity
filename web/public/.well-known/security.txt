@@ -1,0 +1,4 @@
+Contact: https://github.com/Silicon-Brains/SBUniversity/security/advisories/new
+Expires: 2027-10-23T00:00:00.000Z
+Preferred-Languages: en
+Policy: https://github.com/Silicon-Brains/SBUniversity/blob/main/Docs/SECURITY_AND_ACCESS_CONTROL.md

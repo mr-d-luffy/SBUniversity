@@ -14,7 +14,7 @@ SiliconBrains University is a role-based learning platform with student, teacher
 
 - [`web/`](./web/README.md) — Next.js frontend.
 - [`server/`](./server/README.md) — FastAPI backend, Alembic migrations, and tests.
-- [`Docs/`](./Docs/architecture.md) — product, architecture, database, design, and operating documentation.
+- [`Docs/`](./Docs/architecture.md) — product, architecture, database, design, operating, and [security/access-control](./Docs/SECURITY_AND_ACCESS_CONTROL.md) documentation.
 
 ## Local development
 
@@ -29,3 +29,5 @@ SiliconBrains University is a role-based learning platform with student, teacher
 From `web/`, run `npm run typecheck`, `npm run lint`, and `npm run build`. From `server/`, run `pytest tests`.
 
 See [`Docs/phases.md`](./Docs/phases.md) for implementation status and next steps. Account deletion is permanent and requires a configured Clerk backend secret.
+
+Production deployments must configure exact HTTPS `CORS_ORIGINS`, Clerk issuer/audience and webhook secrets, Supabase Storage credentials, Redis rate limiting, and `DEBUG=false`; the API refuses insecure or incomplete production settings. See the [security and access control policy](./Docs/SECURITY_AND_ACCESS_CONTROL.md) for application controls and external deployment obligations.

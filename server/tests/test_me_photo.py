@@ -25,7 +25,7 @@ async def test_student_can_load_stored_avatar(
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/jpeg"
-    assert response.headers["cache-control"] == "private, max-age=300"
+    assert response.headers["cache-control"] == "private, no-store"
     assert response.content == b"image-bytes"
 
 

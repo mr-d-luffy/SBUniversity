@@ -1,6 +1,41 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-cream-50: #FDF6EE;
+  --color-cream-100: #FAE9D6;
+  --color-cream-200: #F5DABF;
+  --color-cream-300: #E8C39C;
+  --color-cream-400: #D4A574;
+  --color-green-50: #ECF4F3;
+  --color-green-100: #CFE3E1;
+  --color-green-500: #2F7F78;
+  --color-green-600: #17524E;
+  --color-green-700: #0F3D3A;
+  --color-green-900: #092A28;
+  --color-bordo-50: #FBEFEF;
+  --color-bordo-100: #F3D6D8;
+  --color-bordo-500: #9A2A36;
+  --color-bordo-700: #6C151E;
+  --color-bordo-900: #4F0F16;
+  --color-ink: #092A28;
+  --color-ink-muted: #4B5F5D;
+  --color-ink-placeholder: #5F7270;
+  --color-success: #2F855A;
+  --color-success-bg: #E6F4EC;
+  --color-warning: #B7791F;
+  --color-warning-bg: #FDF1DC;
+  --color-danger: #C62828;
+  --color-danger-bg: #FDECEC;
+  --color-rank-gold: #C9A227;
+  --color-rank-silver: #9CA3AF;
+  --color-rank-bronze: #A8672D;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-heading: Poppins, Inter, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --shadow-sm: 0 1px 2px rgba(9, 42, 40, 0.06);
+  --shadow-md: 0 6px 16px rgba(9, 42, 40, 0.10);
+  --shadow-xl: 0 20px 40px rgba(9, 42, 40, 0.18);
+}
 
 :root { color-scheme: light; }
 html { scroll-padding-top: 5rem; -webkit-text-size-adjust: 100%; }
@@ -11,6 +46,8 @@ img, video, iframe { max-width: 100%; }
 pre, code { overflow-wrap: anywhere; }
 table { max-width: 100%; }
 .page-enter { animation: page-enter 240ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.about-page-enter { animation: about-page-enter 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.team-member-enter { animation: team-member-enter 480ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
 .motion-card { animation: content-enter 280ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
 .motion-control,
 button:not(:disabled) {
@@ -24,12 +61,20 @@ button:not(:disabled):hover { transform: translateY(-1px); }
 button:not(:disabled):active { transform: scale(0.98); }
 .chat-message-enter { animation: chat-message-enter 180ms ease-out both; }
 @keyframes page-enter {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes about-page-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes team-member-enter {
+  from { opacity: 0; transform: translateY(14px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes content-enter {
-  from { opacity: 0; transform: translateY(7px) scale(0.995); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 @keyframes chat-message-enter {
   from { opacity: 0; transform: translateY(6px) scale(0.99); }

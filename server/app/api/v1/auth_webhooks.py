@@ -82,6 +82,17 @@ async def clerk_webhook(
         clerk_id = data.get("id")
         user = await user_repo.get_by_clerk_id(clerk_id)
         if user:
+            public_metadata = data.get("public_metadata")
+            role_str = (
+                public_metadata.get("role")
+                if isinstance(public_metadata, dict)
+                else None
+            )
+            if role_str:
+                try:
+                    user.role = UserRole(role_str)
+                except ValueError:
+                    logger.warning("Ignoring unknown Clerk role value in user.updated event")
             first_name = data.get("first_name") or ""
             last_name = data.get("last_name") or ""
             full_name = f"{first_name} {last_name}".strip()

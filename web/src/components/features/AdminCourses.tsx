@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "@clerk/nextjs";
 import { BookOpen, Loader2, Pencil, Plus, Trash2, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -254,7 +255,7 @@ export function AdminCourses() {
         <p role="alert" className="mt-4 text-sm text-danger">{loadError}</p>
       )}
 
-      {isOpen && (
+      {isOpen && createPortal((
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-3 sm:items-center sm:p-4">
           <button
             type="button"
@@ -441,8 +442,8 @@ export function AdminCourses() {
             </form>
           </div>
         </div>
-      )}
-      {deletingCourse && (
+      ), document.body)}
+      {deletingCourse && createPortal((
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <button
             type="button"
@@ -464,7 +465,7 @@ export function AdminCourses() {
             </div>
           </div>
         </div>
-      )}
+      ), document.body)}
     </>
   );
 }
