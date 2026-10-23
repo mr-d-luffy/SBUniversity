@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, use, useCallback } from "react";
+import React, { useState, useEffect, use, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
@@ -11,13 +11,9 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
-  Send,
-  HelpCircle,
-  Sparkles,
   Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
 import clsx from "clsx";
 import { api, getDevAuthToken } from "@/lib/api";
@@ -38,65 +34,10 @@ interface Question {
 
 interface ExamAttemptResponse {
   attempt_id: string;
+  exam_title: string;
   expires_at: string;
   questions: Question[];
 }
-
-interface ExamDetailsResponse {
-  title: string;
-  questions: Question[];
-}
-
-const FALLBACK_QUESTIONS: Question[] = [
-  {
-    id: "q1",
-    position: 1,
-    text: "What is the worst-case time complexity of searching for an element in a balanced Binary Search Tree (AVL or Red-Black)?",
-    marks: 5,
-    options: [
-      { id: "o1", position: 1, text: "O(1)" },
-      { id: "o2", position: 2, text: "O(log n)" },
-      { id: "o3", position: 3, text: "O(n)" },
-      { id: "o4", position: 4, text: "O(n log n)" },
-    ],
-  },
-  {
-    id: "q2",
-    position: 2,
-    text: "Which of the following data structures is typically used to implement Breadth-First Search (BFS) in a graph?",
-    marks: 5,
-    options: [
-      { id: "o5", position: 1, text: "Stack" },
-      { id: "o6", position: 2, text: "Queue" },
-      { id: "o7", position: 3, text: "Priority Queue" },
-      { id: "o8", position: 4, text: "Binary Heap" },
-    ],
-  },
-  {
-    id: "q3",
-    position: 3,
-    text: "In a min-heap with N elements, what is the time complexity of extracting the minimum element?",
-    marks: 5,
-    options: [
-      { id: "o9", position: 1, text: "O(1)" },
-      { id: "o10", position: 2, text: "O(log n)" },
-      { id: "o11", position: 3, text: "O(n)" },
-      { id: "o12", position: 4, text: "O(n^2)" },
-    ],
-  },
-  {
-    id: "q4",
-    position: 4,
-    text: "What happens when you perform an in-order traversal of a valid Binary Search Tree?",
-    marks: 5,
-    options: [
-      { id: "o13", position: 1, text: "Elements are visited in descending order" },
-      { id: "o14", position: 2, text: "Elements are visited in strictly ascending order" },
-      { id: "o15", position: 3, text: "Elements are visited level by level" },
-      { id: "o16", position: 4, text: "Leaves are visited before root nodes" },
-    ],
-  },
-];
 
 export default function ExamRunnerPage({ params }: { params: Promise<{ id: string }> }) {
   const unwrappedParams = use(params);
@@ -104,7 +45,7 @@ export default function ExamRunnerPage({ params }: { params: Promise<{ id: strin
   const toast = useToast();
   const { getToken } = useAuth();
 
-  const [questions, setQuestions] = useState<Question[]>(FALLBACK_QUESTIONS);
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [examTitle, setExamTitle] = useState("Course Examination");
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -114,6 +55,10 @@ export default function ExamRunnerPage({ params }: { params: Promise<{ id: strin
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState("Autosaved");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const finalizationStartedRef = useRef(false);
+  const pendingAnswerSavesRef = useRef<Set<Promise<void>>>(new Set());
+  const selectedAnswersRef = useRef<Record<string, string>>({});
 
   const resolveToken = useCallback(async () => {
     let token = await getToken();
@@ -127,59 +72,33 @@ export default function ExamRunnerPage({ params }: { params: Promise<{ id: strin
   useEffect(() => {
     async function initExam() {
       setLoading(true);
+      setLoadError("");
+      setAttemptId(null);
+      setQuestions([]);
+      selectedAnswersRef.current = {};
+      setSelectedAnswers({});
+      finalizationStartedRef.current = false;
       try {
         const token = await resolveToken();
         const examId = unwrappedParams.id;
-
-        // Try start attempt on backend
         const attemptRes = await api<ExamAttemptResponse>(`/exams/${examId}/attempts`, token ?? undefined, {
           method: "POST",
-        }).catch(() => null);
+        });
+        if (!attemptRes.questions?.length) throw new Error("This exam does not contain any questions.");
+        setAttemptId(attemptRes.attempt_id);
+        setExamTitle(attemptRes.exam_title);
+        setQuestions(attemptRes.questions.map((q) => ({
+          id: q.id,
+          position: q.position,
+          text: q.text,
+          marks: q.marks,
+          options: q.options.map((o) => ({ id: o.id, position: o.position, text: o.text })),
+        })));
 
-        if (attemptRes && attemptRes.questions?.length > 0) {
-          setAttemptId(attemptRes.attempt_id);
-          setQuestions(
-            attemptRes.questions.map((q) => ({
-              id: q.id,
-              position: q.position,
-              text: q.text,
-              marks: q.marks,
-              options: q.options.map((o) => ({
-                id: o.id,
-                position: o.position,
-                text: o.text,
-              })),
-            }))
-          );
-
-          if (attemptRes.expires_at) {
-            const exp = new Date(attemptRes.expires_at).getTime();
-            const now = Date.now();
-            const diff = Math.max(10, Math.floor((exp - now) / 1000));
-            setTimeLeftSec(diff);
-          }
-        } else {
-          // Try loading exam details
-          const examRes = await api<ExamDetailsResponse>(`/exams/${examId}`, token ?? undefined).catch(() => null);
-          if (examRes?.title) setExamTitle(examRes.title);
-          if (examRes?.questions && examRes.questions.length > 0) {
-            setQuestions(
-              examRes.questions.map((q) => ({
-                id: q.id,
-                position: q.position,
-                text: q.text,
-                marks: q.marks,
-                options: q.options.map((o) => ({
-                  id: o.id,
-                  position: o.position,
-                  text: o.text,
-                })),
-              }))
-            );
-          }
-        }
+        const expiresAt = new Date(attemptRes.expires_at).getTime();
+        setTimeLeftSec(Math.max(1, Math.floor((expiresAt - Date.now()) / 1000)));
       } catch (err) {
-        console.warn("Using fallback questions for exam runner:", err);
+        setLoadError(err instanceof Error ? err.message : "Could not start this exam.");
       } finally {
         setLoading(false);
       }
@@ -188,64 +107,65 @@ export default function ExamRunnerPage({ params }: { params: Promise<{ id: strin
     initExam();
   }, [unwrappedParams.id, resolveToken]);
 
-  // Server-authoritative timer countdown
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeLeftSec((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          handleSubmit(true);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
   const currentQ = questions[currentIndex] || questions[0];
 
+  const saveAnswer = useCallback(async (questionId: string, optionId: string) => {
+    if (!attemptId) return;
+    const token = await resolveToken();
+    await api(
+      `/attempts/${attemptId}/answers/${questionId}`,
+      token ?? undefined,
+      { method: "PUT", body: JSON.stringify({ selected_option_id: optionId }) }
+    );
+  }, [attemptId, resolveToken]);
+
+  const persistLatestAnswers = useCallback(async () => {
+    await Promise.allSettled(Array.from(pendingAnswerSavesRef.current));
+    const saves = await Promise.allSettled(
+      Object.entries(selectedAnswersRef.current).map(([questionId, optionId]) => saveAnswer(questionId, optionId))
+    );
+    if (saves.some((save) => save.status === "rejected")) {
+      throw new Error("One or more answers could not be saved.");
+    }
+  }, [saveAnswer]);
+
   const handleSelectOption = async (questionId: string, optionId: string) => {
-    setSelectedAnswers((prev) => ({
-      ...prev,
-      [questionId]: optionId,
-    }));
+    selectedAnswersRef.current = { ...selectedAnswersRef.current, [questionId]: optionId };
+    setSelectedAnswers(selectedAnswersRef.current);
     setAutoSaveStatus("Saving...");
 
     if (attemptId) {
+      const saveRequest = saveAnswer(questionId, optionId);
+      pendingAnswerSavesRef.current.add(saveRequest);
       try {
-        const token = await resolveToken();
-        await api(
-          `/exams/attempts/${attemptId}/answers`,
-          token ?? undefined,
-          {
-            method: "POST",
-            body: JSON.stringify({
-              question_id: questionId,
-              selected_option_id: optionId,
-            }),
-          }
-        ).catch(() => null);
+        await saveRequest;
+        setAutoSaveStatus("Saved to database");
       } catch {
-        // silent autosave catch
+        setAutoSaveStatus("Save failed — will retry before submission");
+      } finally {
+        pendingAnswerSavesRef.current.delete(saveRequest);
       }
     }
-
-    setTimeout(() => {
-      setAutoSaveStatus("Autosaved to Database");
-    }, 200);
   };
 
-  const handleSubmit = async (isAuto = false) => {
+  const handleSubmit = useCallback(async (isAuto = false) => {
+    if (finalizationStartedRef.current) return;
+    finalizationStartedRef.current = true;
     setIsSubmitting(true);
     setIsConfirmOpen(false);
 
     try {
+      try {
+        await persistLatestAnswers();
+      } catch {
+        if (!isAuto) throw new Error("Answers could not be saved.");
+        setAutoSaveStatus("Some answers could not be saved; submitting recorded answers");
+      }
       const token = await resolveToken();
       if (attemptId) {
-        await api(`/exams/attempts/${attemptId}/submit`, token ?? undefined, {
+        await api(`/attempts/${attemptId}/submit`, token ?? undefined, {
           method: "POST",
-        }).catch(() => null);
+        });
       }
 
       toast(
@@ -257,12 +177,86 @@ export default function ExamRunnerPage({ params }: { params: Promise<{ id: strin
         router.push("/student/results");
       }, 700);
     } catch {
-      toast("Submission recorded.");
-      router.push("/student/results");
-    } finally {
+      finalizationStartedRef.current = false;
       setIsSubmitting(false);
+      toast("We could not save every answer or submit the exam. Check your connection and try again.");
+    } finally {
+      if (finalizationStartedRef.current) setIsSubmitting(false);
     }
-  };
+  }, [attemptId, persistLatestAnswers, resolveToken, router, toast]);
+
+  // Count down against the server-provided expiry, only after an attempt exists.
+  useEffect(() => {
+    if (!attemptId || loading) return;
+    const timer = setInterval(() => {
+      setTimeLeftSec((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          void handleSubmit(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [attemptId, loading, handleSubmit]);
+
+  const handleIntegrityViolation = useCallback(async (reason: "tab_hidden" | "window_blur") => {
+    if (!attemptId || finalizationStartedRef.current) return;
+    finalizationStartedRef.current = true;
+    setIsSubmitting(true);
+    try {
+      await Promise.allSettled(Array.from(pendingAnswerSavesRef.current));
+      await persistLatestAnswers().catch(() => undefined);
+      const token = await resolveToken();
+      await api(`/attempts/${attemptId}/integrity-violation`, token ?? undefined, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+        keepalive: true,
+      });
+      toast("Exam auto-submitted because the exam window lost focus. Your teacher can review a re-exam request.");
+      router.replace("/student/results");
+    } catch {
+      finalizationStartedRef.current = false;
+      setIsSubmitting(false);
+      toast("We could not record the exam submission. Return to the exam and try submitting again.");
+    }
+  }, [attemptId, persistLatestAnswers, resolveToken, router, toast]);
+
+  useEffect(() => {
+    if (!attemptId || loading) return;
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") void handleIntegrityViolation("tab_hidden");
+    };
+    const onWindowBlur = () => {
+      if (document.visibilityState === "visible") void handleIntegrityViolation("window_blur");
+    };
+    const onPageHide = () => void handleIntegrityViolation("window_blur");
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("blur", onWindowBlur);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("blur", onWindowBlur);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, [attemptId, loading, handleIntegrityViolation]);
+
+  if (loading) {
+    return <div className="grid min-h-screen place-items-center bg-cream-50"><Loader2 className="h-8 w-8 animate-spin text-green-700" aria-label="Starting exam" /></div>;
+  }
+  if (loadError || !attemptId || questions.length === 0) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-cream-50 p-4">
+        <div className="w-full max-w-lg rounded-2xl border border-cream-300 bg-white p-6 text-center shadow-sm">
+          <AlertTriangle className="mx-auto h-9 w-9 text-warning" />
+          <h1 className="mt-3 font-heading text-xl font-bold text-green-900">Could not start this exam</h1>
+          <p className="mt-2 text-sm text-ink-muted">{loadError || "A verified exam attempt could not be created."}</p>
+          <Button href="/student/exams" variant="primary" size="sm" className="mt-5">Return to exams</Button>
+        </div>
+      </main>
+    );
+  }
 
   const minutes = Math.floor(timeLeftSec / 60);
   const seconds = timeLeftSec % 60;
@@ -323,6 +317,10 @@ export default function ExamRunnerPage({ params }: { params: Promise<{ id: strin
 
       {/* Main Runner Body */}
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        <div className="mb-5 flex items-start gap-3 rounded-xl border border-warning/30 bg-warning-bg p-3 text-xs text-green-900 sm:text-sm">
+          <ShieldCheck size={18} className="mt-0.5 shrink-0 text-warning" />
+          <p>Keep this exam window active. Switching tabs or windows automatically submits and flags your attempt for faculty review.</p>
+        </div>
         <div className="grid min-w-0 gap-5 sm:gap-8 lg:grid-cols-12">
           {/* Question Navigator Palette */}
           <div className="lg:col-span-4 order-2 lg:order-1">

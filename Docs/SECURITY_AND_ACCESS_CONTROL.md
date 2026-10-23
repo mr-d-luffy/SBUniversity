@@ -5,7 +5,7 @@
 > **Owner:** SiliconBrains University Engineering / Security Lead
 > **Version:** 1.0 · **Last reviewed:** 2026-10-23 · **Next review:** 2027-04-23
 
-This document defines the security standards and access control rules for the project. All contributors must follow it. Items marked **[MUST]** are mandatory, **[SHOULD]** are strongly recommended, **[MAY]** are optional.
+This document defines the security standards and access control rules for the project. All contributors must follow it. Items marked **[MUST]** are mandatory, **[SHOULD]** are strongly recommended, **[MAY]** are optional. This policy was reviewed against the live repository code in `web/` and `server/` as of 2026-10-23.
 
 This policy is tailored to the current repository. Application controls are implemented in the web and API code where possible. Operational controls (such as MFA enrollment, cloud account reviews, incident contacts, backups, and protected branch settings) require configuration by the repository and service owners and cannot be enforced by application code alone. Android requirements are not applicable until an Android client is added.
 

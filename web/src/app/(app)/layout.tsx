@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 import { Shell } from "@/components/shell/Shell";
-import { DEMO, getSession, ROLE_HOME, Role } from "@/lib/auth";
+import { DEMO, getSession } from "@/lib/auth";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {

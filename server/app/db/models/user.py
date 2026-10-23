@@ -66,7 +66,12 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         "CourseTeacher", back_populates="teacher", passive_deletes=True
     )
     enrollments: Mapped[List["Enrollment"]] = relationship("Enrollment", back_populates="student", cascade="all, delete-orphan")
-    exam_attempts: Mapped[List["ExamAttempt"]] = relationship("ExamAttempt", back_populates="student", cascade="all, delete-orphan")
+    exam_attempts: Mapped[List["ExamAttempt"]] = relationship(
+        "ExamAttempt",
+        back_populates="student",
+        foreign_keys="ExamAttempt.student_id",
+        cascade="all, delete-orphan",
+    )
     results: Mapped[List["Result"]] = relationship("Result", back_populates="student", cascade="all, delete-orphan")
     certificates: Mapped[List["Certificate"]] = relationship("Certificate", back_populates="student", foreign_keys="Certificate.student_id", cascade="all, delete-orphan")
     task_completions: Mapped[List["TaskCompletion"]] = relationship("TaskCompletion", back_populates="student", foreign_keys="TaskCompletion.student_id", cascade="all, delete-orphan")

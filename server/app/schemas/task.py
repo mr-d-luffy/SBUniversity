@@ -35,9 +35,15 @@ class TaskCreate(BaseModel):
 
 
 class TaskUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
+    course_id: Optional[uuid.UUID] = None
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    description: Optional[str] = Field(default=None, max_length=10000)
+    points: Optional[int] = Field(default=None, ge=0)
     due_at: Optional[datetime] = None
+    resource_type: Optional[TaskResourceType] = None
+    resource_url: Optional[AnyHttpUrl] = None
+    assignment_scope: Optional[TaskAssignmentScope] = None
+    target_student_ids: Optional[List[uuid.UUID]] = None
 
 
 class TaskResponse(BaseModel):
@@ -56,6 +62,7 @@ class TaskResponse(BaseModel):
     resource_type: Optional[TaskResourceType] = None
     resource_url: Optional[str] = None
     assignment_scope: TaskAssignmentScope = TaskAssignmentScope.ALL_STUDENTS
+    target_student_ids: Optional[List[uuid.UUID]] = None
     status: TaskStatus
     created_at: datetime
     # Student view augmentation

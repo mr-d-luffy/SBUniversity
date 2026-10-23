@@ -1,6 +1,6 @@
 # rules.md — SiliconBrains University Development Rules
 
-> Mandatory for every developer and AI assistant working on this repo.
+> Mandatory for every developer and AI assistant working on this repo. This version reflects the live `web/` + `server/` repository layout and coding conventions as of 2026-10-23.
 
 ## 1. Golden Rules
 1. Read `PRD.md`, `architecture.md`, `database.md`, `design.md`, `phases.md`, `memory.md` **before** implementing.

@@ -122,10 +122,12 @@ Editor instead of running Alembic against the untracked schema.
 ```bash
 alembic upgrade head
 ```
-The current Alembic head is `015_teacher_profile_backfill`. Run `alembic upgrade head`
+The current Alembic head is `016_user_activity_days`. Run `alembic upgrade head`
 from the `server/` directory with the intended database configured in `DATABASE_URL`.
-This applies student academic fields, teacher verification, and creates missing profiles
-for existing teacher accounts.
+This applies student academic fields, teacher verification, creates missing profiles
+for existing teacher accounts, and adds persistent student/teacher activity tracking.
+For an existing Supabase bootstrap database not tracked by Alembic, run
+`activity_schema_update.sql` in the Supabase SQL Editor.
 
 ### 3. Seed Sample Data (Development/Staging)
 

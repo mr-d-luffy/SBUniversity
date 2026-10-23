@@ -359,7 +359,7 @@ Retries: exponential backoff for Gemini/Storage (max 3). Backups: Supabase daily
 **Glossary:** *Task Points* points awarded automatically when a task is completed, used for ranking · *RBAC* role-based access control · *JWKS* JSON Web Key Set · *SSE* Server-Sent Events · *ZSET* Redis sorted set · *RLS* Row Level Security · *PITR* point-in-time recovery · *Aarsh Intelligence* the platform's Gemini-powered assistant.
 **References:** Clerk docs (JWT templates, webhooks), FastAPI docs, Supabase docs (Postgres, Storage, RLS), Redis docs (sorted sets, pub/sub), Google Gemini API docs, ReportLab docs.
 
-## 18. Implementation update (2026-10-18)
+## 18. Implementation update (2026-10-23)
 - Admin course CRUD supports multiple teachers and selected or all-active-student enrollment. `course_teachers` supplements the primary `courses.teacher_id`.
 - Admin account removal is permanent in Clerk and PostgreSQL. The identity-provider deletion must succeed before the database row is removed; authored teaching content remains with a nullable author reference.
 - Live whiteboards are course-scoped. Teachers control a session and its canvas; students explicitly join, can view and chat, and cannot draw. Chat messages expire after ten minutes; strokes remain with session history.

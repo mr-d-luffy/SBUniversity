@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
+import Image from "next/image";
 import clsx from "clsx";
 import {
   AlertTriangle,
@@ -166,9 +167,12 @@ function ConfirmModal({
 function Avatar({ name, url }: { name: string; url?: string | null }) {
   if (url) {
     return (
-      <img
+      <Image
         src={url}
         alt={name}
+        width={32}
+        height={32}
+        unoptimized
         className="h-8 w-8 rounded-full object-cover ring-1 ring-cream-300"
       />
     );
@@ -210,7 +214,7 @@ const ROLE_TONE: Record<UserRole, "neutral" | "info" | "urgent"> = {
 };
 
 /* ─── Main component ─────────────────────────────────────────────────────── */
-export function UsersTable({ initial }: { initial?: unknown }) {
+export function UsersTable() {
   const { getToken } = useAuth();
   const toast = useToast();
 

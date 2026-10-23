@@ -256,6 +256,7 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
   useEffect(
     () => {
       mountedRef.current = true;
+      const audioUrls = audioUrlsRef.current;
       return () => {
         mountedRef.current = false;
         if (recorderRef.current) {
@@ -263,7 +264,7 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
           recorderRef.current.stop();
         }
         recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
-        Object.values(audioUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
+        Object.values(audioUrls).forEach((url) => URL.revokeObjectURL(url));
       };
     },
     [],

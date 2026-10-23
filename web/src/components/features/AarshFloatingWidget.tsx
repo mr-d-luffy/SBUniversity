@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import clsx from "clsx";
-import { Maximize2, Send, Sparkles, X, ShieldAlert, BookOpen, Trophy, Award } from "lucide-react";
+import { Maximize2, Send, X, ShieldAlert } from "lucide-react";
 
 interface Message {
   id: string;
@@ -30,7 +30,7 @@ const KNOWLEDGE_RESPONSES: Record<string, string> = {
     "Your official university **Virtual ID Card** is accessible from the sidebar under **Virtual ID Card** (`/student/profile`). It displays your student code, department, photo, validity, and a secure verification QR code that can be scanned anywhere.",
 };
 
-export function AarshFloatingWidget({ userRole, userName }: { userRole: string; userName: string }) {
+export function AarshFloatingWidget({ userName }: { userName: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([

@@ -75,6 +75,7 @@ interface ChatMessage {
 }
 
 const PALETTE = ["#173f38", "#2563eb", "#dc2626", "#7c3aed", "#d97706", "#111827"];
+const EMPTY_STROKES: Stroke[] = [];
 const TOOL_LABELS: Record<Tool, string> = {
   pen: "Pen",
   eraser: "Eraser",
@@ -369,7 +370,7 @@ export function LiveWhiteboard({ role }: { role: Role }) {
     };
   }, [resolveToken, role, session?.id, session?.is_active]);
 
-  const strokes = session?.strokes ?? [];
+  const strokes = session?.strokes ?? EMPTY_STROKES;
   const paintBoard = useCallback(() => {
     const canvas = boardCanvasRef.current;
     const overlay = canvasRef.current;
@@ -847,7 +848,7 @@ export function LiveWhiteboard({ role }: { role: Role }) {
             {canControlBoard && (
               <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/80 px-3 py-2.5 sm:px-4">
                 <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1" aria-label="Drawing tools">
-                  {tools.map(({ id, label, icon: Icon }) => (
+                  {tools.map(({ id, icon: Icon }) => (
                     <button
                       type="button"
                       key={id}

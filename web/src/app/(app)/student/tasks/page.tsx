@@ -8,7 +8,7 @@ export default function TasksPage() {
     <>
       <PageHeader
         title="My Tasks & Assignments"
-        subtitle="Finish course tasks and lab assessments to earn Task Points. Points are credited automatically."
+        subtitle="Tasks are organized by course. Finish assignments and lab assessments to earn Task Points."
         action={
           <span className="flex items-center gap-2 text-sm text-ink-muted">
             <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-success" />

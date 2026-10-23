@@ -3,15 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import {
-  BarChart3,
-  TrendingUp,
-  Users,
-  Award,
-  CheckCircle2,
-  Clock,
-  Sparkles,
-  ArrowUpRight,
-  ShieldCheck,
+  
   Loader2,
 } from "lucide-react";
 import { PageHeader, Card, StatCard } from "@/components/ui/Card";

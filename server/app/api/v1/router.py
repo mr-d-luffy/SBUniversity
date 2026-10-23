@@ -1,5 +1,7 @@
 from fastapi import APIRouter
 from app.api.v1.admin import admin_router
+from app.api.v1.activity import router as activity_router
+from app.api.v1.security import router as security_router
 from app.api.v1.assistant import router as assistant_router
 from app.api.v1.auth_webhooks import router as webhooks_router
 from app.api.v1.certificates import router as certificates_router
@@ -24,6 +26,8 @@ api_v1_router.include_router(webhooks_router)
 
 # User / Self
 api_v1_router.include_router(me_router)
+api_v1_router.include_router(activity_router)
+api_v1_router.include_router(security_router)
 
 # Role Dashboards
 api_v1_router.include_router(student_router)

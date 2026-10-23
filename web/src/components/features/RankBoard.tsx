@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import { useAuth, useUser } from "@clerk/nextjs";
-import { Trophy, Filter, Loader2, Sparkles, RefreshCw } from "lucide-react";
+import { Trophy, Filter, Loader2, RefreshCw } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { api, getDevAuthToken } from "@/lib/api";
 

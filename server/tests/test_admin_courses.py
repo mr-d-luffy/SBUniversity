@@ -141,7 +141,10 @@ async def test_admin_can_assign_specific_teachers_and_students(
         f"/admin/courses/{course['id']}",
         json={
             "title": "Updated roster",
-            "student_ids": [str(db_session.test_student2.id)],
+            "student_ids": [
+                str(db_session.test_student1.id),
+                str(db_session.test_student2.id),
+            ],
             "enroll_all_active_students": False,
         },
         headers=ADMIN_AUTH,

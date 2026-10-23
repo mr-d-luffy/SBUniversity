@@ -116,9 +116,14 @@ class ExamAttempt(Base, UUIDPrimaryKeyMixin):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    integrity_violation: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    integrity_violation_reason: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    integrity_flagged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    reexam_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    reexam_approved_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     exam: Mapped["Exam"] = relationship("Exam", back_populates="attempts")
-    student: Mapped["User"] = relationship("User", back_populates="exam_attempts")
+    student: Mapped["User"] = relationship("User", back_populates="exam_attempts", foreign_keys=[student_id])
     answers: Mapped[List["AttemptAnswer"]] = relationship("AttemptAnswer", back_populates="attempt", cascade="all, delete-orphan")
     result: Mapped[Optional["Result"]] = relationship("Result", back_populates="attempt", uselist=False, cascade="all, delete-orphan")
 

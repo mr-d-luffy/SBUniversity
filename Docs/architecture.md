@@ -1,6 +1,7 @@
 # architecture.md — SiliconBrains University System Architecture
 
-> Defines HOW the system is structured. Update this file whenever architecture changes.
+> Repository snapshot: this document reflects the current implementation in the `web/` and `server/` folders as of 2026-10-23.
+> It is intentionally aligned to the live stack, routes, and service layout in the codebase rather than a hypothetical future product.
 
 ## 1. Tech Stack
 | Layer | Technology |
@@ -91,89 +92,115 @@ Extra: stricter rate limit on admin routes; MFA enforced in Clerk for admin; no 
 - PDF download: client calls API with Bearer token → receives Blob → triggers browser download (`URL.createObjectURL`). No PDF logic in the frontend.
 - Live ranking: `EventSource` (SSE) with polling fallback.
 
-### Folder Structure (Frontend `sbuniversity-web/`)
+### Folder Structure (Current frontend repo: `web/`)
 ```
-src/
-├─ app/
-│  ├─ (public)/
-│  │  ├─ page.tsx                    # Landing
-│  │  ├─ sign-in/[[...sign-in]]/page.tsx
-│  │  ├─ sign-up/[[...sign-up]]/page.tsx
-│  │  └─ verify/[code]/page.tsx
-│  ├─ (student)/student/
-│  │  ├─ dashboard/page.tsx
-│  │  ├─ profile/page.tsx            # Virtual ID card
-│  │  ├─ exams/page.tsx
-│  │  ├─ exams/[id]/page.tsx         # Exam runner
-│  │  ├─ results/page.tsx
-│  │  ├─ results/[id]/page.tsx
-│  │  ├─ certificates/page.tsx
-│  │  └─ tasks/page.tsx
-│  ├─ (teacher)/teacher/
-│  │  ├─ dashboard/page.tsx
-│  │  ├─ exams/page.tsx
-│  │  ├─ exams/new/page.tsx
-│  │  ├─ exams/[id]/page.tsx
-│  │  ├─ tasks/page.tsx            # tasks + approval queue
-│  │  └─ notices/page.tsx
-│  ├─ (admin)/admin/
-│  │  ├─ page.tsx
-│  │  ├─ users/page.tsx
-│  │  ├─ progress/page.tsx
-│  │  ├─ analytics/page.tsx
-│  │  └─ notices/page.tsx
-│  ├─ ranking/page.tsx
-│  ├─ notices/page.tsx
-│  ├─ assistant/page.tsx
-│  ├─ 403/page.tsx
+web/
+├─ src/app/
+│  ├─ (app)/
+│  │  ├─ admin/
+│  │  │  ├─ analytics/
+│  │  │  ├─ courses/
+│  │  │  ├─ notices/
+│  │  │  ├─ progress/
+│  │  │  └─ users/
+│  │  ├─ assistant/
+│  │  ├─ community-chat/
+│  │  ├─ notices/
+│  │  ├─ planner/
+│  │  ├─ ranking/
+│  │  ├─ student/
+│  │  │  ├─ certificates/
+│  │  │  ├─ dashboard/
+│  │  │  ├─ exams/
+│  │  │  ├─ profile/
+│  │  │  ├─ results/
+│  │  │  └─ tasks/
+│  │  ├─ teacher/
+│  │  │  ├─ dashboard/
+│  │  │  ├─ exams/
+│  │  │  └─ tasks/
+│  │  └─ whiteboard/
+│  ├─ about/
+│  ├─ portal/
+│  ├─ sign-in/
+│  ├─ sign-up/
+│  ├─ verify/
 │  ├─ layout.tsx
+│  ├─ page.tsx
 │  └─ globals.css
-├─ components/
-│  ├─ ui/            # Button, Card, Input, Modal, Badge, Table, Skeleton...
-│  ├─ layout/        # Navbar, Sidebar, Footer, DashboardShell
-│  ├─ student/       # IdCard, ProgressCard, ExamCard, RankBadge
-│  ├─ exam/          # ExamRunner, Timer, QuestionCard, QuestionPalette
-│  ├─ ranking/       # TopFourBoard, RankRow, PointsCounter
-│  ├─ tasks/         # TaskCard, TaskList, PointsChip, SubmitTaskForm, ApprovalTable
-│  ├─ notices/       # NoticeCard, NoticeForm
-│  ├─ assistant/     # ChatWidget, ChatWindow, MessageBubble
-│  └─ admin/         # UserTable, AnalyticsChart, ProgressTable
-├─ lib/
-│  ├─ apiClient.ts   # fetch wrapper, attaches Clerk token
-│  ├─ download.ts    # blob download helper
-│  ├─ roles.ts       # role constants & guards
-│  └─ utils.ts
-├─ hooks/            # useLeaderboard, useExamTimer, useChat
-├─ types/            # shared TS types mirroring API schemas
-└─ middleware.ts     # Clerk + role gate
+├─ src/components/
+│  ├─ features/
+│  │  ├─ AarshFloatingWidget.tsx
+│  │  ├─ AdminCourses.tsx
+│  │  ├─ ApprovalQueue.tsx
+│  │  ├─ CommunityChat.tsx
+│  │  ├─ LearnPlanner.tsx
+│  │  ├─ LiveWhiteboard.tsx
+│  │  ├─ RankBoard.tsx
+│  │  ├─ TaskList.tsx
+│  │  ├─ TeacherTaskCreator.tsx
+│  │  ├─ UsersTable.tsx
+│  │  └─ YoutubeVideoTracker.tsx
+│  └─ ui/
+├─ src/lib/
+│  ├─ api.ts
+│  ├─ auth.ts
+│  ├─ actions.ts
+│  └─ mock.ts
+└─ src/proxy.ts
 ```
 
 ## 8. Backend Architecture
 Layered: **Router → Service → Repository → DB**. Routers are thin; business rules live in services.
 
-### Folder Structure (Backend `sbuniversity-api/`)
+### Folder Structure (Current backend repo: `server/`)
 ```
-app/
-├─ main.py                  # app factory, CORS, routers, lifespan
-├─ core/
-│  ├─ config.py             # pydantic-settings (env)
-│  ├─ security.py           # Clerk JWT verify (JWKS)
-│  ├─ deps.py               # get_current_user, require_role
-│  ├─ redis.py              # redis client
-│  ├─ rate_limit.py
-│  └─ logging.py
-├─ db/
-│  ├─ session.py            # async engine/session
-│  ├─ base.py
-│  └─ models/               # SQLAlchemy models (one file per domain)
-├─ schemas/                 # Pydantic request/response models
-├─ repositories/            # DB access only
-├─ services/
-│  ├─ user_service.py
-│  ├─ course_service.py
-│  ├─ exam_service.py        # attempts, timer, grading
-│  ├─ result_service.py
-│  ├─ certificate_service.py
+server/
+├─ app/
+│  ├─ main.py                  # app factory, CORS, lifespan, periodic sweeps
+│  ├─ api/v1/
+│  │  ├─ admin/
+│  │  │  ├─ analytics.py
+│  │  │  ├─ audit_logs.py
+│  │  │  ├─ courses.py
+│  │  │  ├─ notices.py
+│  │  │  ├─ progress.py
+│  │  │  └─ users.py
+│  │  ├─ assistant.py
+│  │  ├─ certificates.py
+│  │  ├─ community_chat.py
+│  │  ├─ exams.py
+│  │  ├─ me.py
+│  │  ├─ notices.py
+│  │  ├─ planner.py
+│  │  ├─ public.py
+│  │  ├─ ranking.py
+│  │  ├─ results.py
+│  │  ├─ router.py
+│  │  ├─ student.py
+│  │  ├─ tasks.py
+│  │  ├─ teacher.py
+│  │  └─ whiteboard.py
+│  ├─ core/
+│  │  ├─ config.py
+│  │  ├─ deps.py
+│  │  ├─ logging.py
+│  │  ├─ rate_limit.py
+│  │  ├─ redis.py
+│  │  └─ security.py
+│  ├─ db/
+│  │  ├─ base.py
+│  │  ├─ session.py
+│  │  └─ models/
+│  ├─ repositories/
+│  ├─ schemas/
+│  ├─ services/
+│  └─ tests/
+├─ migrations/
+├─ scripts/
+├─ storage_local/
+└─ .venv/
+```rvice.py│  ├─ certificate_service.py
 │  ├─ task_service.py        # tasks, completions, automatic point awarding
 │  ├─ ranking_service.py     # Redis leaderboard built from Task Points
 │  ├─ notice_service.py
@@ -266,7 +293,7 @@ Dockerfile
 **Live classroom**
 - Course-scoped live whiteboard session endpoints are grouped under `/whiteboard`; only assigned teachers/admins can control a session, and enrolled students must join before viewing or chatting.
 
-## 14. Current implementation notes (2026-10-18)
+## 14. Current implementation notes (2026-10-23)
 - Admin course management supports create, edit, permanent delete, multiple assigned teachers, selected student enrollment, and enroll-all-active-students.
 - Course-teacher membership is stored in `course_teachers`; `courses.teacher_id` remains the primary-teacher compatibility field.
 - Account deletion is permanent in both Clerk and the application database. It requires `CLERK_SECRET_KEY`; assigned teachers, the signed-in administrator, and the last active administrator are protected by service-layer checks.

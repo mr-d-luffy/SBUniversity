@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import logger
 from app.db.models.course import Course, Enrollment, EnrollmentStatus
@@ -60,6 +60,11 @@ class TaskService:
         course = await self.course_repo.get_by_id(data.course_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+        if creator.role == UserRole.TEACHER and not await self.course_repo.is_teacher_assigned(course.id, creator.id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only create tasks in a course assigned to you.",
+            )
 
         if data.assignment_scope == TaskAssignmentScope.SELECTED_STUDENTS:
             target_ids = set(data.target_student_ids)
@@ -121,6 +126,7 @@ class TaskService:
         return (await self.db.execute(enrollment_stmt)).scalar_one_or_none() is not None
 
     async def update_task(self, task_id: uuid.UUID, data: TaskUpdate, user: User) -> Task:
+        fields = data.model_fields_set
         task = await self.task_repo.get_by_id(task_id)
         if not task:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
@@ -129,12 +135,120 @@ class TaskService:
         if user.role == UserRole.TEACHER and task.created_by != user.id and course and not await self.course_repo.is_teacher_assigned(course.id, user.id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot edit tasks from another teacher's course")
 
+        if task.type == TaskType.EXAM and fields.intersection({"course_id", "resource_type", "resource_url", "assignment_scope", "target_student_ids"}):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Exam course, resource, and assignment settings are managed by the exam.",
+            )
+
+        if "course_id" in data.model_fields_set:
+            if data.course_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="A course must be selected.",
+                )
+            target_course = await self.course_repo.get_by_id(data.course_id)
+            if not target_course:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+            if user.role == UserRole.TEACHER and not await self.course_repo.is_teacher_assigned(target_course.id, user.id):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You can only move a task to a course assigned to you.",
+                )
+            task.course_id = target_course.id
+            task.course = target_course
+
         if data.title is not None:
             task.title = data.title
-        if data.description is not None:
+        if "description" in fields:
             task.description = data.description
-        if data.due_at is not None:
+        if "points" in fields and data.points is not None:
+            task.points = data.points
+        if "due_at" in fields:
             task.due_at = data.due_at
+
+        if fields.intersection({"resource_type", "resource_url"}):
+            resource_type = data.resource_type if "resource_type" in fields else task.resource_type
+            resource_url = (
+                str(data.resource_url) if data.resource_url else None
+            ) if "resource_url" in fields else task.resource_url
+            if (resource_type is None) != (resource_url is None):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="Resource type and resource URL must be provided together, or both cleared.",
+                )
+            if resource_type == TaskResourceType.VIDEO and resource_url:
+                parsed_url = urlparse(resource_url)
+                host = (parsed_url.hostname or "").lower()
+                path_parts = [part for part in parsed_url.path.split("/") if part]
+                video_id = None
+                if host == "youtu.be" and path_parts:
+                    video_id = path_parts[0]
+                elif host in {"youtube.com", "www.youtube.com", "m.youtube.com"}:
+                    if parsed_url.path == "/watch":
+                        video_id = parse_qs(parsed_url.query).get("v", [None])[0]
+                    elif len(path_parts) > 1 and path_parts[0] in {"embed", "shorts", "live"}:
+                        video_id = path_parts[1]
+                if not video_id or not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                        detail="Video tasks require a valid YouTube video URL",
+                    )
+            if resource_url != task.resource_url:
+                await self.db.execute(
+                    delete(TaskVideoProgress).where(TaskVideoProgress.task_id == task.id)
+                )
+            task.resource_type = resource_type
+            task.resource_url = resource_url
+
+        if fields.intersection({"assignment_scope", "target_student_ids"}):
+            assignment_scope = data.assignment_scope if "assignment_scope" in fields else task.assignment_scope
+            if assignment_scope is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="Assignment scope cannot be empty.",
+                )
+            current_recipient_ids = list((await self.db.scalars(
+                select(TaskRecipient.student_id).where(TaskRecipient.task_id == task.id)
+            )).all())
+            target_ids = data.target_student_ids if "target_student_ids" in fields else current_recipient_ids
+            target_ids = target_ids or []
+            if assignment_scope == TaskAssignmentScope.SELECTED_STUDENTS and not target_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="Select at least one student for an individually assigned task",
+                )
+            if assignment_scope == TaskAssignmentScope.ALL_STUDENTS and target_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="Selected students cannot be supplied when assigning to all students",
+                )
+            if len(set(target_ids)) != len(target_ids):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="A student can only be selected once",
+                )
+            newly_selected_ids = set(target_ids) - set(current_recipient_ids)
+            if newly_selected_ids:
+                active_student_ids = set((await self.db.scalars(
+                    select(User.id).where(
+                        User.id.in_(newly_selected_ids),
+                        User.role == UserRole.STUDENT,
+                        User.status == UserStatus.ACTIVE,
+                    )
+                )).all())
+                if active_student_ids != newly_selected_ids:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                        detail="Every selected student must be an active student",
+                    )
+            await self.db.execute(delete(TaskRecipient).where(TaskRecipient.task_id == task.id))
+            if assignment_scope == TaskAssignmentScope.SELECTED_STUDENTS:
+                self.db.add_all(
+                    TaskRecipient(task_id=task.id, student_id=student_id)
+                    for student_id in target_ids
+                )
+            task.assignment_scope = assignment_scope
 
         return await self.task_repo.update(task)
 

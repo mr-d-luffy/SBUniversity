@@ -4,26 +4,23 @@ import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth, useUser } from "@clerk/nextjs";
 import {
-  Award,
+  
   BookOpen,
-  Calendar,
   CheckCircle2,
   Clock,
   ExternalLink,
-  FileCheck2,
-  FileText,
-  GraduationCap,
   IdCard,
   Megaphone,
   Sparkles,
-  Trophy,
   Loader2,
-  ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Card, PageHeader, StatCard } from "@/components/ui/Card";
+import { Card, StatCard } from "@/components/ui/Card";
 import { PointsChip, Badge } from "@/components/ui/Badge";
 import { api, getDevAuthToken } from "@/lib/api";
+import StudyTimeChart from "@/components/features/StudyTimeChart";
+import LearningStreak from "@/components/features/LearningStreak";
+import { ActivityDataProvider } from "@/components/features/ActivityDataProvider";
 
 interface EnrolledCourse {
   id: string;
@@ -200,6 +197,13 @@ export default function StudentDashboard() {
           hint="Verified digital credentials"
         />
       </div>
+
+      <ActivityDataProvider role="student">
+        <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+          <StudyTimeChart />
+          <LearningStreak />
+        </div>
+      </ActivityDataProvider>
 
       {/* Courses & Action Tasks Grid */}
       <div className="grid gap-6 lg:grid-cols-2">

@@ -10,13 +10,13 @@ import { api, getDevAuthToken } from "@/lib/api";
 import {
   CheckCircle2,
   Clock,
-  FileText,
   Link as LinkIcon,
   Send,
   X,
   Loader2,
   AlertCircle,
   Play,
+  BookOpen,
 } from "lucide-react";
 import { YoutubeVideoTracker } from "@/components/features/YoutubeVideoTracker";
 
@@ -139,6 +139,12 @@ export function TaskList({ initial }: { initial?: TaskItem[] }) {
     const s = getComputedStatus(t);
     return filter === "all" || s === filter;
   });
+  const courseGroups = Object.values(shown.reduce<Record<string, { id: string; title: string; tasks: TaskItem[] }>>((groups, task) => {
+    const key = task.course_id || "unassigned";
+    if (!groups[key]) groups[key] = { id: key, title: task.course_title || "Other Tasks", tasks: [] };
+    groups[key].tasks.push(task);
+    return groups;
+  }, {})).sort((a, b) => a.title.localeCompare(b.title));
 
   function handleOpenSubmit(task: TaskItem) {
     setSubmittingTask(task);
@@ -221,8 +227,22 @@ export function TaskList({ initial }: { initial?: TaskItem[] }) {
           </p>
         </div>
       ) : (
-        <div className="grid gap-5 md:grid-cols-2">
-          {shown.map((t) => {
+        <div className="space-y-7">
+          {courseGroups.map((group) => (
+            <section key={group.id} aria-label={`${group.title} tasks`}>
+              <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-cream-200 bg-cream-100/70 px-3 py-2.5 sm:px-4">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white text-green-700 shadow-sm">
+                    <BookOpen size={17} />
+                  </span>
+                  <h2 className="truncate font-heading text-sm font-bold text-green-900 sm:text-base">{group.title}</h2>
+                </div>
+                <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-ink-muted">
+                  {group.tasks.length} task{group.tasks.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+          {group.tasks.map((t) => {
             const status = getComputedStatus(t);
             const dueStr = t.due_at
               ? new Date(t.due_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })
@@ -242,7 +262,7 @@ export function TaskList({ initial }: { initial?: TaskItem[] }) {
                   </div>
 
                   <p className="break-words text-xs text-ink-muted">
-                    {t.course_title || "Course Task"} · Due: {dueStr} ·{" "}
+                    Due: {dueStr} ·{" "}
                     {t.type === "exam"
                       ? "Awarded on passing exam"
                       : t.verification === "auto"
@@ -278,7 +298,6 @@ export function TaskList({ initial }: { initial?: TaskItem[] }) {
                       </button>
                       {activeVideoTaskId === t.id && (
                         <YoutubeVideoTracker
-                          taskId={t.id}
                           videoUrl={t.resource_url}
                           initialProgress={t.my_video_progress ?? 0}
                           onProgress={(progress, duration) =>
@@ -329,6 +348,9 @@ export function TaskList({ initial }: { initial?: TaskItem[] }) {
               </Card>
             );
           })}
+              </div>
+            </section>
+          ))}
         </div>
       )}
 

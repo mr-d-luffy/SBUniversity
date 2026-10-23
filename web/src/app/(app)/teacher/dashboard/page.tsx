@@ -7,21 +7,18 @@ import {
   BookOpen,
   FileText,
   ClipboardCheck,
-  CheckCircle2,
-  Clock,
   Plus,
-  Users,
-  Megaphone,
   ArrowRight,
-  TrendingUp,
-  Sparkles,
   Loader2,
   Presentation,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Card, PageHeader, StatCard } from "@/components/ui/Card";
+import { Card, StatCard } from "@/components/ui/Card";
 import { Badge, PointsChip } from "@/components/ui/Badge";
 import { api, getDevAuthToken } from "@/lib/api";
+import LearningStreak from "@/components/features/LearningStreak";
+import StudyTimeChart from "@/components/features/StudyTimeChart";
+import { ActivityDataProvider } from "@/components/features/ActivityDataProvider";
 
 interface TeacherDashboardResponse {
   my_courses: { id: string; code: string; title: string; is_published: boolean }[];
@@ -147,6 +144,13 @@ export default function TeacherDashboard() {
           hint="Automated exam results"
         />
       </div>
+
+      <ActivityDataProvider role="teacher">
+        <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+          <StudyTimeChart />
+          <LearningStreak />
+        </div>
+      </ActivityDataProvider>
 
       <div className="grid gap-6 lg:grid-cols-12">
         {/* Managed Exams List */}

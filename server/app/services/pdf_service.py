@@ -1,14 +1,13 @@
 import io
-import uuid
 from datetime import datetime
-import qrcode
-from PIL import Image
+from decimal import Decimal
+from pathlib import Path
+
+from pypdf import PdfReader, PdfWriter
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.lib.units import cm, inch
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
-from app.core.config import settings
-from app.core.logging import logger
 
 # SiliconBrains University brand colors (Docs/design.md & Docs/rules.md §19)
 # Bordo: #6C151E | Green: #0F3D3A | Cream: #F5DABF | Ink: #092A28
@@ -23,21 +22,105 @@ COLOR_WHITE = colors.HexColor("#FFFFFF")
 COLOR_SUCCESS = colors.HexColor("#1A7F48")
 COLOR_DANGER = colors.HexColor("#BA1A1A")
 
+RESULT_ASSETS = Path(__file__).resolve().parents[1] / "assets" / "result"
+RESULT_TEMPLATE = RESULT_ASSETS / "SiliconBrains_Result_Template.pdf"
+CERTIFICATE_ASSETS = Path(__file__).resolve().parents[1] / "assets" / "certificate"
+CERTIFICATE_TEMPLATE = CERTIFICATE_ASSETS / "SiliconBrains_Certificate_Template.pdf"
 
-def generate_qr_image(data: str) -> io.BytesIO:
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=10,
-        border=1,
-    )
-    qr.add_data(data)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="#0F3D3A", back_color="#FFFFFF")
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    return buf
+CERTIFICATE_PAGE_W = 595.2755905511812
+CERTIFICATE_LINE_L, CERTIFICATE_LINE_R = 92.0, CERTIFICATE_PAGE_W - 92.0
+CERTIFICATE_CODE_BOX = {
+    "x": 74.0,
+    "y": 42.0,
+    "w": 150.0,
+    "h": 15.0,
+    "prefix": "SB-2026-",
+    "baseline": 46.6,
+    "prefix_font": "CertificateCinzelBold",
+    "prefix_size": 8.2,
+    "prefix_char_space": 1.2,
+    "prefix_x_pad": 6.0,
+    "line_gap": 4.0,
+    "right_pad": 6.0,
+}
+
+
+def _register_result_fonts() -> None:
+    if "ResultCinzel" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont("ResultCinzel", str(RESULT_ASSETS / "fonts" / "Cinzel-Bold.ttf")))
+    if "ResultPinyon" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont("ResultPinyon", str(RESULT_ASSETS / "fonts" / "PinyonScript-Regular.ttf")))
+
+
+def _register_certificate_fonts() -> None:
+    fonts = {
+        "CertificateCinzelBold": "Cinzel-Bold.ttf",
+        "CertificateCinzelMedium": "Cinzel-Medium.ttf",
+        "CertificateName": "PinyonScript-Regular.ttf",
+    }
+    registered = set(pdfmetrics.getRegisteredFontNames())
+    for font_name, filename in fonts.items():
+        if font_name not in registered:
+            pdfmetrics.registerFont(TTFont(font_name, str(CERTIFICATE_ASSETS / "fonts" / filename)))
+
+
+def _certificate_text_width(text: str, font: str, size: float, char_space: float = 0.0) -> float:
+    return pdfmetrics.stringWidth(text, font, size) + char_space * max(len(text) - 1, 0)
+
+
+def _fit_certificate_text(
+    text: str,
+    font: str,
+    max_size: float,
+    max_width: float,
+    min_size: float = 6.0,
+    char_space: float = 0.0,
+) -> float:
+    size = max_size
+    while size >= min_size:
+        if _certificate_text_width(text, font, size, char_space) <= max_width:
+            return size
+        size -= 0.25
+    raise ValueError(f"Certificate value is too long to fit its template field: {text!r}")
+
+
+def _certificate_cap_height(font: str, size: float) -> float:
+    face = pdfmetrics.getFont(font).face
+    return (getattr(face, "capHeight", 700) or 700) * size / 1000.0
+
+
+def _draw_certificate_text(
+    c: canvas.Canvas,
+    text: str,
+    font: str,
+    size: float,
+    center_x: float,
+    baseline: float,
+    color: colors.Color,
+    char_space: float = 0.0,
+) -> None:
+    text_object = c.beginText(center_x - _certificate_text_width(text, font, size, char_space) / 2, baseline)
+    text_object.setFont(font, size)
+    text_object.setCharSpace(char_space)
+    text_object.setFillColor(color)
+    text_object.textOut(text)
+    c.drawText(text_object)
+
+
+def _exact_number(value: float | Decimal) -> str:
+    """Render the stored numeric value without rounding it for the result sheet."""
+    number = Decimal(str(value))
+    return format(number, "f").rstrip("0").rstrip(".") if "." in format(number, "f") else format(number, "f")
+
+
+def _fit_text(c: canvas.Canvas, text: str, font: str, max_size: float, max_width: float, min_size: float = 5) -> float:
+    size = max_size
+    while size > min_size and pdfmetrics.stringWidth(text, font, size) > max_width:
+        size -= 0.25
+    if pdfmetrics.stringWidth(text, font, size) > max_width:
+        raise ValueError(f"Result value does not fit the supplied template: {text!r}")
+    c.setFont(font, size)
+    return size
 
 
 class PDFService:
@@ -47,125 +130,108 @@ class PDFService:
         student_code: str,
         course_title: str,
         certificate_code: str,
-        final_percentage: float,
+        final_percentage: float | Decimal,
         issued_at: datetime,
     ) -> bytes:
-        """
-        Generates an official A4 landscape SiliconBrains University certificate.
-        Design: Cream background, double green border, Bordo highlights,
-        central seal, verify QR code bottom-right.
-        """
-        buffer = io.BytesIO()
-        width, height = landscape(A4)
-        c = canvas.Canvas(buffer, pagesize=landscape(A4))
+        """Fill the supplied certificate template with saved certificate values."""
+        if not CERTIFICATE_TEMPLATE.is_file():
+            raise FileNotFoundError(f"Certificate PDF template is missing: {CERTIFICATE_TEMPLATE}")
+        _register_certificate_fonts()
 
-        # 1. Background
-        c.setFillColor(COLOR_CREAM_LIGHT)
-        c.rect(0, 0, width, height, fill=1, stroke=0)
+        template_reader = PdfReader(str(CERTIFICATE_TEMPLATE))
+        page = template_reader.pages[0]
+        page_width = float(page.mediabox.width)
+        page_height = float(page.mediabox.height)
+        center_x = page_width / 2
+        overlay = io.BytesIO()
+        c = canvas.Canvas(overlay, pagesize=(page_width, page_height))
 
-        # 2. Double Border (Outer 3pt, Inner 1pt)
-        c.setStrokeColor(COLOR_GREEN)
-        c.setLineWidth(3.0)
-        c.rect(1.2 * cm, 1.2 * cm, width - 2.4 * cm, height - 2.4 * cm)
+        name = " ".join(str(student_name).split())
+        name_size = _fit_certificate_text(
+            name, "CertificateName", 32, (CERTIFICATE_LINE_R - CERTIFICATE_LINE_L) - 24, min_size=16
+        )
+        _draw_certificate_text(c, name, "CertificateName", name_size, center_x, 490.5, colors.HexColor("#051F20"))
 
-        c.setLineWidth(1.0)
-        c.rect(1.5 * cm, 1.5 * cm, width - 3.0 * cm, height - 3.0 * cm)
-
-        # 3. Header
-        c.setFillColor(COLOR_GREEN)
-        c.setFont("Helvetica-Bold", 16)
-        c.drawCentredString(width / 2.0, height - 3.2 * cm, "SBUNIVERSITY")
-
-        c.setFont("Helvetica", 10)
-        c.setFillColor(COLOR_INK_MUTED)
-        c.drawCentredString(width / 2.0, height - 3.8 * cm, "OFFICIAL CERTIFICATE OF COURSE COMPLETION")
-
-        # 4. Title
-        c.setFillColor(COLOR_GREEN_DARK)
-        c.setFont("Helvetica-Bold", 28)
-        c.drawCentredString(width / 2.0, height - 5.5 * cm, "CERTIFICATE OF EXCELLENCE")
-
-        # 5. Body Presentation
-        c.setFont("Helvetica", 12)
-        c.setFillColor(COLOR_INK)
-        c.drawCentredString(width / 2.0, height - 6.8 * cm, "This is proudly presented to")
-
-        # Student Name (Large Bordo)
-        c.setFillColor(COLOR_BORDO)
-        c.setFont("Helvetica-Bold", 26)
-        c.drawCentredString(width / 2.0, height - 8.2 * cm, student_name.upper())
-
-        # Subtext
-        c.setFont("Helvetica", 11)
-        c.setFillColor(COLOR_INK_MUTED)
-        c.drawCentredString(width / 2.0, height - 9.1 * cm, f"Student ID: {student_code}")
-
-        c.setFont("Helvetica", 13)
-        c.setFillColor(COLOR_INK)
-        c.drawCentredString(
-            width / 2.0,
-            height - 10.6 * cm,
-            f"for successfully completing all academic requirements and exams for the course",
+        subject = " ".join(str(course_title).split())
+        subject_size = _fit_certificate_text(
+            subject, "CertificateCinzelMedium", 17, (CERTIFICATE_LINE_R - CERTIFICATE_LINE_L) - 24,
+            min_size=9, char_space=1.0,
+        )
+        _draw_certificate_text(
+            c, subject, "CertificateCinzelMedium", subject_size, center_x, 409.0,
+            colors.HexColor("#0B2B26"), char_space=1.0,
         )
 
-        # Course Title (Green)
-        c.setFillColor(COLOR_GREEN)
-        c.setFont("Helvetica-Bold", 18)
-        c.drawCentredString(width / 2.0, height - 11.8 * cm, f'"{course_title}"')
-
-        c.setFont("Helvetica", 12)
-        c.setFillColor(COLOR_INK)
-        c.drawCentredString(
-            width / 2.0,
-            height - 12.9 * cm,
-            f"with an overall grade performance of {final_percentage:.1f}%",
+        percentage_text = f"{format(Decimal(str(final_percentage)), 'f')}%"
+        score_box = {"x": page_width / 2 - 75, "y": 306.0, "w": 150.0, "h": 38.0}
+        score_size = _fit_certificate_text(
+            percentage_text, "CertificateCinzelBold", 20, score_box["w"] - 24, min_size=9, char_space=1.0
+        )
+        score_baseline = score_box["y"] + score_box["h"] / 2 - _certificate_cap_height(
+            "CertificateCinzelBold", score_size
+        ) / 2
+        _draw_certificate_text(
+            c, percentage_text, "CertificateCinzelBold", score_size,
+            score_box["x"] + score_box["w"] / 2, score_baseline, colors.HexColor("#051F20"), char_space=1.0,
         )
 
-        # 6. Center Seal (Circular Bordo)
-        seal_x = width / 2.0
-        seal_y = 4.2 * cm
-        c.setFillColor(COLOR_BORDO)
-        c.circle(seal_x, seal_y, 1.2 * cm, fill=1, stroke=0)
-        c.setStrokeColor(COLOR_CREAM)
-        c.setLineWidth(1.5)
-        c.circle(seal_x, seal_y, 1.05 * cm, fill=0, stroke=1)
-        c.setFillColor(COLOR_WHITE)
-        c.setFont("Helvetica-Bold", 8)
-        c.drawCentredString(seal_x, seal_y + 0.3 * cm, "SEAL OF")
-        c.drawCentredString(seal_x, seal_y - 0.1 * cm, "ACADEMIC")
-        c.drawCentredString(seal_x, seal_y - 0.5 * cm, "EXCELLENCE")
+        date_text = f"{issued_at.day} {issued_at.strftime('%B %Y')}"
+        date_box = {"x": page_width - 74 - 110, "y": 42.0, "w": 110.0, "h": 15.0}
+        date_size = _fit_certificate_text(
+            date_text, "CertificateCinzelBold", 8.2, date_box["w"] - 12, min_size=5.5, char_space=0.6
+        )
+        date_baseline = date_box["y"] + date_box["h"] / 2 - _certificate_cap_height(
+            "CertificateCinzelBold", date_size
+        ) / 2
+        _draw_certificate_text(
+            c, date_text, "CertificateCinzelBold", date_size,
+            date_box["x"] + date_box["w"] / 2, date_baseline, colors.HexColor("#163832"), char_space=0.6,
+        )
 
-        # 7. Signature Line (Left)
-        sig_x = 4.0 * cm
-        c.setStrokeColor(COLOR_GREEN)
-        c.setLineWidth(1.0)
-        c.line(sig_x, 3.8 * cm, sig_x + 5.0 * cm, 3.8 * cm)
-        c.setFillColor(COLOR_INK)
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(sig_x + 0.5 * cm, 3.3 * cm, "Office of Academic Affairs")
-        c.setFont("Helvetica", 8)
-        c.setFillColor(COLOR_INK_MUTED)
-        c.drawString(sig_x + 0.5 * cm, 2.9 * cm, f"Issued: {issued_at.strftime('%B %d, %Y')}")
+        code = str(certificate_code).strip().upper()
+        code_box = CERTIFICATE_CODE_BOX
+        code_center_x = code_box["x"] + code_box["w"] / 2
+        if code.startswith(code_box["prefix"]):
+            code_suffix = code.removeprefix(code_box["prefix"])
+            prefix_width = _certificate_text_width(
+                code_box["prefix"], code_box["prefix_font"], code_box["prefix_size"],
+            ) + code_box["prefix_char_space"]
+            span_left = code_box["x"] + code_box["prefix_x_pad"] + prefix_width + code_box["line_gap"]
+            span_right = code_box["x"] + code_box["w"] - code_box["right_pad"]
+            code_size = _fit_certificate_text(
+                code_suffix, code_box["prefix_font"], code_box["prefix_size"],
+                span_right - span_left - 2, min_size=5.5, char_space=code_box["prefix_char_space"],
+            )
+            code_center_x = (span_left + span_right) / 2
+        else:
+            # Older records use SBU-CERT-...; replace only the template's printed
+            # prefix so the visible code stays exactly verifiable against the DB.
+            c.setFillColor(colors.white)
+            c.rect(code_box["x"], code_box["y"], code_box["w"], code_box["h"], fill=1, stroke=0)
+            code_suffix = code
+            code_size = _fit_certificate_text(
+                code_suffix, code_box["prefix_font"], code_box["prefix_size"],
+                code_box["w"] - 12, min_size=5.5, char_space=0.6,
+            )
+        _draw_certificate_text(
+            c, code_suffix, code_box["prefix_font"], code_size, code_center_x,
+            code_box["baseline"], colors.HexColor("#163832"),
+            char_space=code_box["prefix_char_space"] if code.startswith(code_box["prefix"]) else 0.6,
+        )
 
-        # 8. QR Code and Verification (Right)
-        verify_url = f"{settings.FRONTEND_ORIGIN}/verify/{certificate_code}"
-        qr_buf = generate_qr_image(verify_url)
-        qr_img = Image.open(qr_buf)
-        qr_x = width - 6.5 * cm
-        qr_y = 2.4 * cm
-        c.drawInlineImage(qr_img, qr_x, qr_y, width=2.4 * cm, height=2.4 * cm)
-
-        c.setFont("Helvetica-Bold", 8)
-        c.setFillColor(COLOR_INK)
-        c.drawString(qr_x - 0.2 * cm, 2.0 * cm, f"Code: {certificate_code}")
-        c.setFont("Helvetica", 7)
-        c.setFillColor(COLOR_INK_MUTED)
-        c.drawString(qr_x - 0.2 * cm, 1.6 * cm, "Scan or visit site to verify")
-
-        c.showPage()
         c.save()
-        buffer.seek(0)
-        return buffer.getvalue()
+        overlay.seek(0)
+        page.merge_page(PdfReader(overlay).pages[0])
+        writer = PdfWriter()
+        writer.add_page(page)
+        writer.add_metadata({
+            "/Title": f"Certificate of Completion - {name}",
+            "/Author": "SiliconBrains University",
+            "/Subject": subject,
+        })
+        output = io.BytesIO()
+        writer.write(output)
+        return output.getvalue()
 
     @staticmethod
     def render_result_pdf(
@@ -182,96 +248,70 @@ class PDFService:
         rank_in_exam: int,
         submitted_at: datetime,
     ) -> bytes:
-        """
-        Generates an official A4 portrait SiliconBrains University exam result statement.
-        Design: White page, green top band, cream accents, pass pill,
-        score in Bordo, verification footer.
-        """
-        buffer = io.BytesIO()
-        width, height = A4
-        c = canvas.Canvas(buffer, pagesize=A4)
+        """Fill the supplied result sheet using the result row's persisted values."""
+        if not RESULT_TEMPLATE.is_file():
+            raise FileNotFoundError(f"Result PDF template is missing: {RESULT_TEMPLATE}")
+        _register_result_fonts()
 
-        # 1. Top Green Banner
-        c.setFillColor(COLOR_GREEN)
-        c.rect(0, height - 3.5 * cm, width, 3.5 * cm, fill=1, stroke=0)
+        overlay = io.BytesIO()
+        page_width, page_height = 595.2756, 841.8898
+        c = canvas.Canvas(overlay, pagesize=(page_width, page_height))
+        c.setFillColor(colors.HexColor("#172321"))
 
-        # Header Title
-        c.setFillColor(COLOR_CREAM)
-        c.setFont("Helvetica-Bold", 20)
-        c.drawString(2.0 * cm, height - 1.8 * cm, "SBUNIVERSITY")
+        # Student name and student code positions from the supplied generator.
+        name_font = "ResultPinyon"
+        _fit_text(c, student_name, name_font, 24, 250)
+        c.drawCentredString(221, 488.5, student_name)
+        code = student_code
+        code = code.removeprefix("SBU-2026-").removeprefix("SB-2026-")
+        _fit_text(c, code, "ResultCinzel", 11, 121)
+        c.drawCentredString((372 + 503.2756) / 2, 486.5, code)
 
-        c.setFont("Helvetica", 11)
-        c.setFillColor(COLOR_WHITE)
-        c.drawString(2.0 * cm, height - 2.6 * cm, "Official Academic Examination Report")
+        # The source layout supports six subjects. This result download represents
+        # one exam, so it uses one row and preserves its exact stored score/maximum.
+        subject = f"{course_title} - {exam_title}" if course_title else exam_title
+        columns = [62, 100, 340, 432, 533.2756]
+        _fit_text(c, "1", "ResultCinzel", 9, columns[1] - columns[0] - 8)
+        c.drawCentredString((columns[0] + columns[1]) / 2, 419, "1")
+        _fit_text(c, subject, "ResultCinzel", 8, columns[2] - columns[1] - 8, min_size=4)
+        c.drawCentredString((columns[1] + columns[2]) / 2, 419, subject)
+        score_text = f"{_exact_number(score)} / {_exact_number(total_marks)}"
+        _fit_text(c, score_text, "ResultCinzel", 8, columns[3] - columns[2] - 8)
+        c.drawCentredString((columns[2] + columns[3]) / 2, 419, score_text)
+        status_text = "PASS" if passed else "FAIL"
+        _fit_text(c, status_text, "ResultCinzel", 8, columns[4] - columns[3] - 8)
+        c.drawCentredString((columns[3] + columns[4]) / 2, 419, status_text)
 
-        # 2. Student & Exam Details Box
-        c.setFillColor(COLOR_CREAM_LIGHT)
-        c.rect(1.8 * cm, height - 8.2 * cm, width - 3.6 * cm, 4.0 * cm, fill=1, stroke=0)
-        c.setStrokeColor(COLOR_CREAM)
-        c.setLineWidth(1.0)
-        c.rect(1.8 * cm, height - 8.2 * cm, width - 3.6 * cm, 4.0 * cm, fill=0, stroke=1)
+        # Summary boxes retain the stored percentage and grade; never recompute them.
+        summary_y = 252
+        summary_values = [
+            score_text,
+            f"{_exact_number(percentage)}%  |  {grade}",
+            status_text,
+        ]
+        box_left, box_right = 62, 533.2756
+        box_width = (box_right - box_left - 30) / 3
+        for index, text in enumerate(summary_values):
+            center_x = box_left + index * (box_width + 15) + box_width / 2
+            _fit_text(c, text, "ResultCinzel", 10, box_width - 16)
+            c.drawCentredString(center_x, summary_y, text)
 
-        c.setFillColor(COLOR_INK)
-        c.setFont("Helvetica-Bold", 11)
-        c.drawString(2.4 * cm, height - 5.0 * cm, "Student Name:")
-        c.drawString(2.4 * cm, height - 5.8 * cm, "Student Code:")
-        c.drawString(2.4 * cm, height - 6.6 * cm, "Course:")
-        c.drawString(2.4 * cm, height - 7.4 * cm, "Examination:")
-
-        c.setFont("Helvetica", 11)
-        c.drawString(5.8 * cm, height - 5.0 * cm, student_name)
-        c.drawString(5.8 * cm, height - 5.8 * cm, student_code)
-        c.drawString(5.8 * cm, height - 6.6 * cm, course_title)
-        c.drawString(5.8 * cm, height - 7.4 * cm, exam_title)
-
-        # 3. Score Highlight Card
-        card_y = height - 13.8 * cm
-        c.setFillColor(COLOR_WHITE)
-        c.rect(1.8 * cm, card_y, width - 3.6 * cm, 4.8 * cm, fill=1, stroke=0)
-        c.setStrokeColor(COLOR_GREEN)
-        c.setLineWidth(1.5)
-        c.rect(1.8 * cm, card_y, width - 3.6 * cm, 4.8 * cm, fill=0, stroke=1)
-
-        # Pass / Fail Pill
-        pill_color = COLOR_SUCCESS if passed else COLOR_DANGER
-        c.setFillColor(pill_color)
-        c.roundRect(width - 5.8 * cm, card_y + 3.8 * cm, 3.2 * cm, 0.7 * cm, 4, fill=1, stroke=0)
-        c.setFillColor(COLOR_WHITE)
-        c.setFont("Helvetica-Bold", 9)
-        status_text = "PASSED" if passed else "FAILED"
-        c.drawCentredString(width - 4.2 * cm, card_y + 4.0 * cm, status_text)
-
-        # Main Score
-        c.setFillColor(COLOR_BORDO)
-        c.setFont("Helvetica-Bold", 34)
-        c.drawString(2.4 * cm, card_y + 2.8 * cm, f"{score:g} / {total_marks:g}")
-
-        c.setFillColor(COLOR_INK_MUTED)
-        c.setFont("Helvetica", 11)
-        c.drawString(2.4 * cm, card_y + 2.0 * cm, f"Percentage: {percentage:.1f}%   |   Grade Awarded: {grade}")
-
-        # Metrics Breakdown
-        mins = time_taken_sec // 60
-        secs = time_taken_sec % 60
-        time_str = f"{mins}m {secs}s"
-        c.setFont("Helvetica", 10)
-        c.setFillColor(COLOR_INK)
-        c.drawString(2.4 * cm, card_y + 0.8 * cm, f"Time Taken: {time_str}      Rank in Exam: #{rank_in_exam}      Date: {submitted_at.strftime('%Y-%m-%d %H:%M')}")
-
-        # 4. Summary & Verification Footer
-        c.setFillColor(COLOR_INK_MUTED)
-        c.setFont("Helvetica", 9)
-        c.drawString(2.0 * cm, 2.5 * cm, "This document is computer-generated by the SiliconBrains University examination system.")
-        c.drawString(2.0 * cm, 2.0 * cm, "Results and certifications are governed under the institutional academic policy.")
-
-        c.setStrokeColor(COLOR_GREEN)
-        c.setLineWidth(0.5)
-        c.line(2.0 * cm, 1.5 * cm, width - 2.0 * cm, 1.5 * cm)
-
-        c.setFont("Helvetica", 8)
-        c.drawString(2.0 * cm, 1.0 * cm, "SiliconBrains University Academic Portal")
-
-        c.showPage()
+        # The template has a fixed ten-character result code and date field.
+        date_text = submitted_at.strftime("%d %b %Y")
+        c.setFillColor(colors.HexColor("#172321"))
+        _fit_text(c, date_text, "ResultCinzel", 10, 106)
+        c.drawCentredString((413.2756 + 519.2756) / 2, 163, date_text)
         c.save()
-        buffer.seek(0)
-        return buffer.getvalue()
+        overlay.seek(0)
+
+        writer = PdfWriter(clone_from=str(RESULT_TEMPLATE))
+        page = writer.pages[0]
+        if "/Annots" in page:
+            del page["/Annots"]
+        if "/AcroForm" in writer._root_object:
+            del writer._root_object["/AcroForm"]
+        page.merge_page(PdfReader(overlay).pages[0])
+        writer.add_metadata({"/Title": f"Result - {student_name}", "/Author": "SiliconBrains University"})
+        output = io.BytesIO()
+        writer.write(output)
+        return output.getvalue()

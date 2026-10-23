@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge, PointsChip } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
 import { api, getDevAuthToken } from "@/lib/api";
+import { ExamIntegrityQueue } from "@/components/features/ExamIntegrityQueue";
 
 interface TeacherExam {
   id: string;
@@ -122,6 +123,8 @@ export default function TeacherExamsPage() {
         <StatCard value={publishedCount} label="Published Exams" />
         <StatCard value={draftCount} label="Draft Exams" />
       </div>
+
+      <ExamIntegrityQueue />
 
       {loading ? (
         <div className="flex h-56 items-center justify-center rounded-2xl border border-cream-300 bg-white">

@@ -16,9 +16,7 @@ import {
   ExternalLink,
   Edit3,
   Loader2,
-  User,
   X,
-  Camera,
 } from "lucide-react";
 import { PageHeader, Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";

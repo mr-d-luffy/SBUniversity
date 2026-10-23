@@ -1,13 +1,14 @@
 import secrets
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
+
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.logging import logger
 from app.db.models.certificate import Certificate
-from app.db.models.course import Course, Enrollment, EnrollmentStatus
+from app.db.models.course import EnrollmentStatus
 from app.db.models.exam import Exam, ExamStatus
 from app.db.models.result import Result
 from app.db.models.user import User, UserRole
@@ -36,7 +37,7 @@ class CertificateService:
         self.result_repo = ResultRepository(db)
         self.audit_repo = AuditRepository(db)
 
-    async def check_and_issue_certificate(self, student_id: uuid.UUID, course_id: uuid.UUID) -> Optional[Certificate]:
+    async def check_and_issue_certificate(self, student_id: uuid.UUID, course_id: uuid.UUID) -> Certificate | None:
         """
         Completion rule: all published exams of the course passed -> certificate issued.
         """
@@ -73,7 +74,7 @@ class CertificateService:
 
         # Generate unique code
         code = generate_certificate_code()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         cert = Certificate(
             certificate_code=code,
@@ -106,11 +107,11 @@ class CertificateService:
                 student_name=student_name,
                 student_code=student_code,
                 course_title=course_title,
-                certificate_code=code,
-                final_percentage=final_pct,
-                issued_at=now,
+                certificate_code=cert.certificate_code,
+                final_percentage=cert.final_percentage,
+                issued_at=cert.issued_at,
             )
-            pdf_path = f"certificates/{code}.pdf"
+            pdf_path = f"certificates/template-v2/{cert.certificate_code}.pdf"
             saved_path = await StorageService.upload_file(pdf_path, pdf_bytes)
             cert.pdf_path = saved_path
             await self.cert_repo.update(cert)
@@ -125,7 +126,8 @@ class CertificateService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Certificate not found")
 
         # Try to load cached
-        if cert.pdf_path:
+        normalized_pdf_path = cert.pdf_path.replace("\\", "/") if cert.pdf_path else ""
+        if "certificates/template-v2/" in normalized_pdf_path:
             cached = await StorageService.download_file(cert.pdf_path)
             if cached:
                 return cached
@@ -142,10 +144,10 @@ class CertificateService:
             student_code=student_code,
             course_title=course_title,
             certificate_code=cert.certificate_code,
-            final_percentage=float(cert.final_percentage),
+            final_percentage=cert.final_percentage,
             issued_at=cert.issued_at,
         )
-        pdf_path = f"certificates/{cert.certificate_code}.pdf"
+        pdf_path = f"certificates/template-v2/{cert.certificate_code}.pdf"
         saved_path = await StorageService.upload_file(pdf_path, pdf_bytes)
         cert.pdf_path = saved_path
         await self.cert_repo.update(cert)
@@ -168,7 +170,7 @@ class CertificateService:
             revocation_reason="Revoked by university administration" if not is_valid else None,
         )
 
-    async def revoke_certificate(self, cert_id: uuid.UUID, admin: User, reason: Optional[str]) -> Certificate:
+    async def revoke_certificate(self, cert_id: uuid.UUID, admin: User, reason: str | None) -> Certificate:
         if admin.role != UserRole.ADMIN:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins can revoke certificates")
 
@@ -176,7 +178,7 @@ class CertificateService:
         if not cert:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Certificate not found")
 
-        cert.revoked_at = datetime.now(timezone.utc)
+        cert.revoked_at = datetime.now(UTC)
         cert.revoked_by = admin.id
 
         await self.audit_repo.log(

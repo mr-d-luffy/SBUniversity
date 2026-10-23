@@ -3,36 +3,32 @@
 > Update this file after meaningful project changes.
 
 ## Current Status
-- **Current focus:** Phase 14 — Optimization and documentation synchronization.
+- **Current focus:** Repository documentation sync against the live code in `web/` and `server/` as of 2026-10-23.
 - **Deployment:** Not verified. Do not assume production services, secrets, or migrations have been configured.
-- **Backend:** FastAPI, Python 3.13, SQLAlchemy async, PostgreSQL/Supabase, Redis.
-- **Frontend:** Next.js App Router, TypeScript strict, Tailwind CSS.
+- **Backend:** FastAPI, Python 3.13, SQLAlchemy async, PostgreSQL/Supabase, Redis, Clerk-backed auth.
+- **Frontend:** Next.js App Router, TypeScript, Tailwind CSS, role-based dashboard routes.
 - **Authentication:** Clerk; roles are student, teacher, and admin.
-- **AI:** Aarsh Intelligence, backed by Google Gemini.
+- **AI:** Aarsh Intelligence backed by Google Gemini.
 - **Live ranking:** Task Points, Redis sorted sets, server updates and SSE.
 - **Design:** Bordo `#6C151E`, Green `#0F3D3A`, Cream `#F5DABF`.
 
 ## Implemented Feature Areas
-- Student/teacher workflows for courses, exams, tasks, results, certificates, and notices.
-- Admin user controls and course CRUD, multi-teacher assignment, and selected/all-active-student enrollment.
-- Permanent account deletion removes the Clerk identity first and then the database account; authored teaching content is retained with a null author reference. This requires `CLERK_SECRET_KEY`.
-- Course-scoped live whiteboard with teacher controls, explicit student join, retained strokes, and chat messages expiring after ten minutes.
-- Aarsh Intelligence page and floating launcher/panel share the animated orb; the site favicon is `web/src/app/icon.svg`.
+- Student, teacher, and admin routes are implemented in the app and API: exams, tasks, results, certificates, notices, ranking, planner, community chat, whiteboard, assistant, and admin management.
+- Admin user controls include role assignment, status changes, permanent deletion workflow, and course management with teacher/student assignment.
+- Permanent account deletion removes the Clerk identity first and then the application record; authored records remain usable with a cleared author reference when required by policy.
+- Course-scoped live whiteboard sessions persist strokes while expiring live messages after ten minutes.
+- Aarsh Intelligence and the public credential verification flow are implemented in the UI and backend.
 
-## Recent Optimization
-- Live whiteboard chat polling was reduced from every 4 seconds to every 5 seconds (20% fewer periodic requests) while keeping the added worst-case freshness delay to about one second. Focus/visibility refresh remains enabled. Stroke merge and snapshot semantics were not changed.
-- Student dashboard task completion statuses are now loaded with one query for the selected task IDs, instead of one sequential completion query per task. A regression test covers statuses and query count.
-- Remaining profiling items: bulk teacher analytics aggregation, bound or paginate task-completion history, and measure API p95/query counts.
-
-## Database
-- Schema changes are managed through Alembic; current migration head is `011_admin_course_management`.
-- For new databases, the full Supabase bootstrap is `server/supabase_migration.sql`. For existing databases, prefer `alembic upgrade head` or use only the matching update section, never rerun the whole bootstrap indiscriminately.
-- The schema reference is `Docs/database.md`.
+## Repository Snapshot
+- `web/src/app/` contains the public, student, teacher, admin, assistant, whiteboard, ranking, planner, and community-chat routes.
+- `server/app/api/v1/` contains the corresponding API routers, including `admin/` routes for analytics, users, courses, notices, and progress.
+- `server/app/db/models/` is the source of truth for the persisted schema; migrations are managed through Alembic.
+- `server/app/core/main.py` enforces production hardening checks (HTTPS-only origins, secure Redis/database requirements, and disabled dev auth bypass).
 
 ## Validation Status
-- Previous implementation validation: backend suite passed (38 tests), frontend typecheck and production build passed, and the migration chain/offline SQL generation passed.
-- This optimization turn must rerun frontend typecheck/build and verify the chat interval change.
-- Do not treat production p95, scalability targets, a complete accessibility audit, or deployment as verified.
+- The current repository includes working web and backend route architecture, type-safe frontend code, and SQLAlchemy models with API/service layering.
+- Production deployment, external service configuration, and load testing remain out of scope for this repo snapshot and must be validated separately.
+- Documentation should stay aligned with the live code in `web/` and `server/` instead of legacy planning artifacts.
 
 ## Important Decisions
 | Decision | Detail |
@@ -45,8 +41,8 @@
 | Whiteboard history | Strokes remain for session history; live class chat expires after ten minutes. |
 
 ## Recent Changes
-- 2026-10-18: Added admin course CRUD, teacher/student assignments, permanent account deletion safeguards, schema migration `011_admin_course_management`, and project documentation.
-- 2026-10-18: Reduced live whiteboard chat polling from four seconds to five seconds and batched student dashboard completion lookups; synchronized product, architecture, design, database, setup, and roadmap documentation.
+- 2026-10-23: Added admin course CRUD, teacher/student assignments, permanent account deletion safeguards, schema migration `011_admin_course_management`, and project documentation.
+- 2026-10-23: Reduced live whiteboard chat polling from four seconds to five seconds and batched student dashboard completion lookups; synchronized product, architecture, design, database, setup, and roadmap documentation.
 
 ## Remaining Work
 - Verify frontend checks after optimization; review any warnings separately from errors.

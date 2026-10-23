@@ -17,6 +17,8 @@ from app.schemas.exam import (
     ExamPublishRequest,
     ExamResponse,
     ExamUpdate,
+    IntegrityReviewResponse,
+    IntegrityViolationRequest,
     QuestionCreate,
     QuestionOptionResponse,
     QuestionResponse,
@@ -47,7 +49,17 @@ async def list_exams(
             Enrollment.status == EnrollmentStatus.ACTIVE,
         )
         enrolled_ids = (await db.execute(enrolled_stmt)).scalars().all()
-        stmt = stmt.where(Exam.course_id.in_(enrolled_ids), Exam.status == ExamStatus.PUBLISHED)
+        approved_exam_ids = (await db.scalars(
+            select(ExamAttempt.exam_id).where(
+                ExamAttempt.student_id == current_user.id,
+                ExamAttempt.integrity_violation.is_(True),
+                ExamAttempt.reexam_approved_at.is_not(None),
+            ).distinct()
+        )).all()
+        stmt = stmt.where(
+            Exam.course_id.in_(enrolled_ids),
+            or_(Exam.status == ExamStatus.PUBLISHED, Exam.id.in_(approved_exam_ids)),
+        )
     elif current_user.role == UserRole.TEACHER:
         # Teacher's own courses
         courses_stmt = select(Course.id).where(
@@ -70,11 +82,21 @@ async def list_exams(
 
     # Map task points
     result = []
+    exam_service = ExamService(db)
     for ex in exams:
+        reexam_available = False
+        if current_user.role == UserRole.STUDENT:
+            approval_count = await exam_service.exam_repo.count_reexam_approvals(ex.id, current_user.id)
+            if approval_count:
+                attempt_count = await exam_service.exam_repo.count_attempts(ex.id, current_user.id)
+                reexam_available = attempt_count < ex.max_attempts + approval_count
+            if ex.status != ExamStatus.PUBLISHED and not reexam_available:
+                continue
         ex_dict = ExamResponse.model_validate(ex)
         ex_dict.task_points = ex.task.points if ex.task else 0
         ex_dict.course_title = ex.course.title if ex.course else None
         ex_dict.questions_count = len(ex.questions)
+        ex_dict.reexam_available = reexam_available
         result.append(ex_dict)
     return result
 
@@ -211,6 +233,23 @@ async def start_exam_attempt(
     return await service.start_attempt(exam_id, current_user)
 
 
+@router.get("/exam-integrity/reviews", response_model=List[IntegrityReviewResponse])
+async def list_integrity_reviews(
+    current_user: User = Depends(require_role([UserRole.TEACHER, UserRole.ADMIN])),
+    db: AsyncSession = Depends(get_db),
+):
+    return await ExamService(db).list_integrity_reviews(current_user)
+
+
+@router.post("/exam-integrity/reviews/{attempt_id}/approve-reexam", status_code=status.HTTP_204_NO_CONTENT)
+async def approve_integrity_reexam(
+    attempt_id: uuid.UUID,
+    current_user: User = Depends(require_role([UserRole.TEACHER, UserRole.ADMIN])),
+    db: AsyncSession = Depends(get_db),
+):
+    await ExamService(db).approve_reexam(attempt_id, current_user)
+
+
 @router.get("/attempts/{attempt_id}")
 async def get_attempt(
     attempt_id: uuid.UUID,
@@ -277,3 +316,13 @@ async def submit_exam_attempt(
 ):
     service = ExamService(db)
     return await service.submit_attempt(attempt_id, current_user.id)
+
+
+@router.post("/attempts/{attempt_id}/integrity-violation", response_model=SubmitAttemptResponse)
+async def flag_integrity_violation(
+    attempt_id: uuid.UUID,
+    body: IntegrityViolationRequest,
+    current_user: User = Depends(require_role(UserRole.STUDENT)),
+    db: AsyncSession = Depends(get_db),
+):
+    return await ExamService(db).flag_integrity_violation(attempt_id, current_user.id, body.reason)

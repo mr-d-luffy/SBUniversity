@@ -40,6 +40,8 @@ from app.db.models.whiteboard import (
     WhiteboardStroke,
 )
 from app.db.models.audit import AuditLog
+from app.db.models.activity import UserActivityDay
+from app.db.models.security_event import SecurityRequestEvent
 
 __all__ = [
     "Base",
@@ -90,4 +92,6 @@ __all__ = [
     "WhiteboardStroke",
     "WhiteboardMessage",
     "AuditLog",
+    "UserActivityDay",
+    "SecurityRequestEvent",
 ]

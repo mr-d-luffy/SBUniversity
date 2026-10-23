@@ -8,13 +8,10 @@ import {
   Download,
   CheckCircle,
   ExternalLink,
-  ShieldCheck,
   QrCode,
-  Calendar,
-  Sparkles,
   Loader2,
 } from "lucide-react";
-import { PageHeader, Card } from "@/components/ui/Card";
+import { PageHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";

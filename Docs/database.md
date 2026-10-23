@@ -1,5 +1,7 @@
 # database.md — SiliconBrains University Database Design
 
+> Repository snapshot: this schema description reflects the current `server/app/db/models/` and `server/app/repositories/` implementation as of 2026-10-24.
+
 ## 1. Technology
 - **Supabase PostgreSQL** (database name: `postgres`, schema `public`)
 - Access: **FastAPI only** (SQLAlchemy 2 async + asyncpg) using the Supabase connection string (pooler).
@@ -53,6 +55,7 @@ users 1──* planner_entries (private owner)
 courses 1──* whiteboard_sessions 1──* whiteboard_strokes
 whiteboard_sessions 1──* whiteboard_messages (expires after 10 minutes)
 users 1──* audit_logs (actor)
+users 1──* user_activity_days (daily foreground time and streak badge)
 ```
 
 ## 4. Tables
@@ -456,6 +459,24 @@ audit_logs
  └── created_at   timestamptz default now()
 ```
 Index: `(created_at DESC)`, `(actor_id)`.
+
+### user_activity_days
+```
+user_activity_days
+ ├── user_id                  uuid NOT NULL → users.id ON DELETE CASCADE
+ ├── activity_date            date NOT NULL
+ ├── active_seconds           integer NOT NULL DEFAULT 0 CHECK (>= 0)
+ ├── streak_badge_collected   boolean NOT NULL DEFAULT false
+ └── updated_at               timestamptz NOT NULL DEFAULT now()
+```
+Primary key: `(user_id, activity_date)`. Index: `(activity_date)`. The signed-in
+student or teacher's foreground time is accumulated by the API in short heartbeats;
+a day counts toward the streak at 60 seconds. The badge claim flag is stored on the
+first day of the current streak so the same continuing streak cannot claim repeatedly.
+The browser never accesses this table directly; RLS is enabled without client policies.
+Apply Alembic revision `016_user_activity_days`, or use
+[`server/activity_schema_update.sql`](../server/activity_schema_update.sql) for an
+existing Supabase bootstrap database that is not tracked by Alembic.
 
 Permanent admin course deletion removes the course's related exams, attempts, results, tasks, enrollments, certificates, notices, and whiteboard sessions. Permanent user deletion removes the identity-provider account and database user; student-owned records cascade with that user, while authored exams, tasks, notices, and whiteboard sessions are retained with their creator field set to NULL. A teacher must be reassigned from all courses before their account can be deleted. The last active administrator and the signed-in administrator cannot be deleted.
 

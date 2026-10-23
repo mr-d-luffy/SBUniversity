@@ -1,6 +1,10 @@
 import asyncio
+import ipaddress
+import re
+import time
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 from fastapi import FastAPI, HTTPException, Request, status
@@ -8,12 +12,13 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
+from sqlalchemy import delete, text
 from app.api.v1.router import api_v1_router
 from app.core.config import settings
 from app.core.logging import logger, setup_logging
 from app.core.redis import close_redis_client, get_redis_client
 from app.db.session import AsyncSessionLocal
+from app.db.models.security_event import SecurityRequestEvent
 from app.repositories.exam_repository import ExamRepository
 from app.repositories.community_chat_repository import CommunityChatRepository
 from app.services.exam_service import ExamService
@@ -72,6 +77,26 @@ async def periodic_expired_whiteboard_messages_sweeper():
             break
         except Exception as e:
             logger.error("Exception in live-class message sweeper: %s", e)
+
+
+async def periodic_security_event_retention_sweeper():
+    """Keep the live security feed bounded to the most recent 30 days."""
+    while True:
+        try:
+            await asyncio.sleep(24 * 60 * 60)
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    delete(SecurityRequestEvent).where(
+                        SecurityRequestEvent.created_at < datetime.now(timezone.utc) - timedelta(days=30)
+                    )
+                )
+                await session.commit()
+                if result.rowcount:
+                    logger.info("Removed %d expired security request events", result.rowcount)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error("Exception in security event retention sweeper: %s", e)
 
 
 @asynccontextmanager
@@ -161,6 +186,7 @@ async def lifespan(app: FastAPI):
     whiteboard_chat_sweeper_task = asyncio.create_task(
         periodic_expired_whiteboard_messages_sweeper()
     )
+    security_event_sweeper_task = asyncio.create_task(periodic_security_event_retention_sweeper())
 
     yield
 
@@ -168,10 +194,12 @@ async def lifespan(app: FastAPI):
     sweeper_task.cancel()
     community_chat_sweeper_task.cancel()
     whiteboard_chat_sweeper_task.cancel()
+    security_event_sweeper_task.cancel()
     await asyncio.gather(
         sweeper_task,
         community_chat_sweeper_task,
         whiteboard_chat_sweeper_task,
+        security_event_sweeper_task,
         return_exceptions=True,
     )
     await close_redis_client()
@@ -202,7 +230,50 @@ app.add_middleware(
 async def security_headers(request: Request, call_next):
     request_id = uuid.uuid4().hex
     request.state.request_id = request_id
-    response = await call_next(request)
+    started = time.perf_counter()
+    response = None
+    try:
+        response = await call_next(request)
+    finally:
+        # Record API GET traffic only. Never persist query strings, bodies, cookies,
+        # or credentials. Exclude the polling endpoint to prevent feed self-noise.
+        path = request.url.path
+        if (
+            request.method == "GET"
+            and path.startswith("/api/v1/")
+            and not path.startswith("/api/v1/admin/security")
+            and path not in {"/api/v1/health", "/api/v1/health/"}
+        ):
+            safe_path = re.sub(r"/[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}", "/:id", path)
+            safe_path = re.sub(r"/\d+(?=/|$)", "/:id", safe_path)[:240]
+            host = request.client.host if request.client else None
+            try:
+                address = ipaddress.ip_address(host) if host else None
+                if address and address.version == 4:
+                    client_ip = str(ipaddress.ip_network(f"{address}/24", strict=False).network_address) + "/24"
+                elif address:
+                    client_ip = ":".join(address.exploded.split(":")[:4]) + "::/64"
+                else:
+                    client_ip = None
+            except ValueError:
+                client_ip = None
+            try:
+                async with AsyncSessionLocal() as telemetry_db:
+                    telemetry_db.add(SecurityRequestEvent(
+                        actor_id=getattr(request.state, "db_user_id", None),
+                        path=safe_path,
+                        method="GET",
+                        status_code=response.status_code if response is not None else 500,
+                        duration_ms=max(0, int((time.perf_counter() - started) * 1000)),
+                        client_ip=client_ip,
+                        user_agent=request.headers.get("user-agent", "")[:240] or None,
+                    ))
+                    await telemetry_db.commit()
+            except Exception as telemetry_error:
+                logger.warning("Security request telemetry write failed: %s", telemetry_error)
+
+    if response is None:
+        raise RuntimeError("Request failed before a response was created")
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"

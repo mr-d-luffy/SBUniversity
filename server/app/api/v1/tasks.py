@@ -5,7 +5,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_user, require_role
 from app.db.models.course import Course, CourseTeacher, Enrollment, EnrollmentStatus
-from app.db.models.task import CompletionStatus, Task, TaskCompletion, TaskStatus
+from app.db.models.task import CompletionStatus, Task, TaskCompletion, TaskRecipient, TaskStatus
 from app.db.models.user import User, UserRole
 from app.db.session import get_db
 from app.repositories.course_repository import CourseRepository
@@ -81,10 +81,20 @@ async def list_tasks(
         filtered_tasks = [
             t for t in tasks if t.course_id in teacher_c_ids or t.created_by == current_user.id
         ]
+        recipient_map: dict[uuid.UUID, list[uuid.UUID]] = {}
+        if filtered_tasks:
+            recipient_rows = (await db.execute(
+                select(TaskRecipient.task_id, TaskRecipient.student_id).where(
+                    TaskRecipient.task_id.in_([task.id for task in filtered_tasks])
+                )
+            )).all()
+            for task_id, student_id in recipient_rows:
+                recipient_map.setdefault(task_id, []).append(student_id)
         res = []
         for t in filtered_tasks:
             t_resp = TaskResponse.model_validate(t)
             t_resp.course_title = t.course.title if t.course else "Course"
+            t_resp.target_student_ids = recipient_map.get(t.id, [])
             res.append(t_resp)
         return res
 
@@ -153,6 +163,11 @@ async def get_task_detail(
 
     t_resp = TaskResponse.model_validate(task)
     t_resp.course_title = task.course.title if task.course else "Course"
+
+    if current_user.role in {UserRole.TEACHER, UserRole.ADMIN}:
+        t_resp.target_student_ids = list((await db.scalars(
+            select(TaskRecipient.student_id).where(TaskRecipient.task_id == task.id)
+        )).all())
 
     if current_user.role == UserRole.STUDENT:
         comp = await repo.get_completion(task.id, current_user.id)

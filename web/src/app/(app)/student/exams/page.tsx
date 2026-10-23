@@ -5,7 +5,6 @@ import { useAuth } from "@clerk/nextjs";
 import {
   Clock,
   HelpCircle,
-  Award,
   Calendar,
   CheckCircle2,
   AlertCircle,
@@ -31,6 +30,7 @@ interface ApiExam {
   status: "draft" | "published" | "closed";
   questions_count?: number;
   task_points?: number;
+  reexam_available?: boolean;
 }
 
 export default function ExamsPage() {
@@ -70,7 +70,7 @@ export default function ExamsPage() {
     <>
       <PageHeader
         title="Course Examinations"
-        subtitle="Exams open strictly within their scheduled window. Server-side timers and autosave ensure reliable testing."
+        subtitle="Exams open in their scheduled window. Faculty-approved re-exams are also available from this page."
         action={
           <span className="flex items-center gap-2 text-sm text-ink-muted">
             <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-success" />
@@ -108,7 +108,7 @@ export default function ExamsPage() {
             const end = new Date(e.end_at);
             const isLive = e.status === "published" && now >= start && now <= end;
             const isUpcoming = e.status === "published" && now < start;
-            const isClosed = e.status === "closed" || now > end;
+            const canStart = isLive || Boolean(e.reexam_available);
 
             const windowStr = `${start.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${end.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 
@@ -122,7 +122,9 @@ export default function ExamsPage() {
                     <h3 className="min-w-0 flex-1 break-words font-heading text-base font-bold text-green-900">
                       {e.title}
                     </h3>
-                    {isLive ? (
+                    {e.reexam_available ? (
+                      <Badge tone="warning"><AlertCircle size={12} className="mr-1" /> Re-exam approved</Badge>
+                    ) : isLive ? (
                       <Badge tone="success">
                         <CheckCircle2 size={12} className="mr-1" /> Open Now
                       </Badge>
@@ -158,9 +160,9 @@ export default function ExamsPage() {
 
                 <div className="mt-auto flex flex-col items-stretch gap-3 border-t border-cream-200 pt-3 sm:flex-row sm:items-center sm:justify-between">
                   <PointsChip points={e.task_points ?? 0} />
-                  {isLive ? (
+                  {canStart ? (
                     <Button href={`/student/exams/${e.id}`} variant="primary" size="sm" className="w-full justify-center sm:w-auto">
-                      Start Exam Now
+                      {e.reexam_available ? "Start Approved Re-exam" : "Start Exam Now"}
                     </Button>
                   ) : isUpcoming ? (
                     <Button variant="secondary" size="sm" disabled className="w-full justify-center sm:w-auto">

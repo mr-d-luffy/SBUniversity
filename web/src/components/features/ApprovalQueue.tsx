@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { PointsChip, Badge } from "@/components/ui/Badge";
+import { PointsChip } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
 import { api, getDevAuthToken } from "@/lib/api";
 import {
@@ -14,7 +14,6 @@ import {
   FileText,
   CheckCircle2,
   Loader2,
-  Clock,
 } from "lucide-react";
 
 export interface PendingTaskReview {

@@ -7,7 +7,6 @@ import {
   BookOpen,
   BookMarked,
   Bot,
-  CheckSquare,
   ClipboardCheck,
   ClipboardList,
   CalendarDays,
@@ -25,6 +24,7 @@ import {
   MessagesSquare,
   Presentation,
   Sparkles,
+  ShieldCheck,
   Trophy,
   Users,
   X,
@@ -36,14 +36,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { demoSignOut } from "@/lib/actions";
 import { ToastProvider } from "@/components/ui/Toast";
 import { AarshFloatingWidget } from "@/components/features/AarshFloatingWidget";
+import ActivityTracker from "@/components/features/ActivityTracker";
 
 type Role = "student" | "teacher" | "admin";
-
-const ROLE_HOMES: Record<Role, string> = {
-  student: "/student/dashboard",
-  teacher: "/teacher/dashboard",
-  admin: "/admin/users",
-};
 
 interface NavItem {
   href: string;
@@ -83,6 +78,7 @@ const NAV: Record<Role, NavItem[]> = {
     { href: "/admin/courses", label: "Course Control", icon: BookMarked },
     { href: "/admin/progress", label: "Progress Check", icon: BookOpen },
     { href: "/admin/analytics", label: "Live Analytics", icon: BarChart3 },
+    { href: "/admin/security", label: "Security Monitor", icon: ShieldCheck },
     { href: "/admin/notices", label: "Notice Control", icon: Megaphone },
     { href: "/planner", label: "Learn Planner", icon: CalendarDays },
     { href: "/ranking", label: "Live Ranking", icon: Trophy },
@@ -168,6 +164,7 @@ export function Shell({ role, name, demo, children }: { role: Role; name: string
 
   return (
     <ToastProvider>
+      <ActivityTracker role={role} />
       <div className={clsx("min-h-dvh bg-cream-50 transition-[padding] duration-200", collapsed ? "lg:pl-16" : "lg:pl-64")}>
         {/* Deep Green Heritage Sidebar (30% secondary brand structure) */}
         <aside
@@ -299,7 +296,7 @@ export function Shell({ role, name, demo, children }: { role: Role; name: string
         </main>
 
         {/* Floating Aarsh AI Assistant accessible on all pages */}
-        <AarshFloatingWidget userRole={role} userName={name} />
+        <AarshFloatingWidget userName={name} />
       </div>
     </ToastProvider>
   );

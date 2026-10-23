@@ -94,12 +94,10 @@ function watchedSeconds(ranges: WatchedRange[]): number {
 }
 
 export function YoutubeVideoTracker({
-  taskId,
   videoUrl,
   initialProgress,
   onProgress,
 }: {
-  taskId: string;
   videoUrl: string;
   initialProgress: number;
   onProgress: (progress: number, durationSeconds: number) => void;

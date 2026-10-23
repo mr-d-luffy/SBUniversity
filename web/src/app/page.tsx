@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import {
   Award,
   BarChart3,
-  CheckCircle2,
   FileCheck2,
   GraduationCap,
   IdCard,
@@ -14,6 +13,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CredentialVerifyForm } from "@/components/features/CredentialVerifyForm";
+import { LandingPortalPreview } from "@/components/features/LandingPortalPreview";
 
 export const metadata: Metadata = {
   title: "Online Learning, Exams & Academic Credentials",
@@ -108,7 +108,7 @@ export default function Landing() {
         {/* Hero Section */}
         <section className="relative overflow-hidden bg-gradient-to-b from-cream-100 to-cream-50 pb-12 pt-10 sm:pb-16 sm:pt-12 lg:pt-20 lg:pb-24">
           <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-12">
-            <div className="lg:col-span-7 space-y-6">
+            <div className="landing-hero-copy lg:col-span-7 space-y-6">
               <div className="inline-flex items-center gap-2 rounded-full border border-cream-300 bg-white px-3.5 py-1 text-xs font-semibold text-green-900 shadow-sm">
                 <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
                 <span>Next-Generation Academic Platform · v2026</span>
@@ -137,42 +137,8 @@ export default function Landing() {
             </div>
 
             {/* Academic platform overview */}
-            <div className="lg:col-span-5">
-              <div className="relative rounded-2xl border border-cream-300 bg-white p-6 shadow-xl">
-                <div className="mb-4 flex items-center justify-between border-b border-cream-200 pb-3">
-                  <div className="flex items-center gap-2">
-                    <GraduationCap size={18} className="text-green-700" />
-                    <h2 className="font-heading text-base font-bold text-green-900">
-                      Your academic portal
-                    </h2>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {[
-                    { icon: FileCheck2, title: "Course examinations", detail: "Take scheduled, timed assessments." },
-                    { icon: CheckCircle2, title: "Tasks and progress", detail: "Keep course work and achievements together." },
-                    { icon: Award, title: "Academic credentials", detail: "Access course records and credential tools." },
-                  ].map(({ icon: Icon, title, detail }) => (
-                    <div
-                      key={title}
-                      className="flex items-center gap-3.5 rounded-xl border border-cream-200 bg-cream-50/60 p-3"
-                    >
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-green-100 text-green-700">
-                        <Icon size={18} aria-hidden />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-sm text-green-900">{title}</p>
-                        <p className="text-[11px] text-ink-muted">{detail}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-4 rounded-xl bg-green-50 p-3 text-center text-xs text-green-900">
-                  <span>Students, teachers and administrators each have role-based portal tools.</span>
-                </div>
-              </div>
+            <div className="landing-hero-preview lg:col-span-5">
+              <LandingPortalPreview />
             </div>
           </div>
         </section>
@@ -207,7 +173,7 @@ export default function Landing() {
 
           <div className="mt-8 grid gap-4 sm:mt-12 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
             {features.map(({ icon: Icon, title, text }) => (
-              <Card key={title} className="flex flex-col p-6 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
+              <Card key={title} className="landing-feature-card flex flex-col p-6 transition-all duration-300 hover:shadow-md hover:-translate-y-1">
                 <span className="grid h-12 w-12 place-items-center rounded-xl bg-green-50 text-green-700 shadow-sm">
                   <Icon size={24} aria-hidden />
                 </span>
@@ -232,7 +198,7 @@ export default function Landing() {
 
             <div className="mt-8 grid gap-4 md:mt-12 md:grid-cols-3 md:gap-6">
               {steps.map((s) => (
-                <div key={s.step} className="rounded-2xl bg-green-600/90 p-6 border border-green-500/40 shadow-lg">
+                <div key={s.step} className="landing-step-card rounded-2xl bg-green-600/90 p-6 border border-green-500/40 shadow-lg transition-all duration-300 hover:-translate-y-1 hover:bg-green-600 hover:shadow-xl">
                   <span className="font-heading text-3xl font-bold text-cream-200">{s.step}</span>
                   <h3 className="mt-3 font-heading text-lg font-bold !text-cream-50">{s.title}</h3>
                   <p className="mt-2 text-sm text-cream-100/90 leading-relaxed">{s.desc}</p>

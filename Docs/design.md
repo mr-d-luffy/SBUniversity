@@ -1,6 +1,6 @@
 # design.md — SiliconBrains University Design System
 
-> v0.2 — Palette updated to **Bordo · Green · Cream** with the **60 : 30 : 10** rule. Source palette: BORDO `#6C151E`, GREEN `#0F3D3A`, CREAM `#F5DABF`. White is added only as a neutral surface.
+> v0.2 — Palette updated to **Bordo · Green · Cream** with the **60 : 30 : 10** rule. Source palette: BORDO `#6C151E`, GREEN `#0F3D3A`, CREAM `#F5DABF`. White is added only as a neutral surface. This document reflects the current `web/src/app` and component styling as of 2026-10-23.
 
 ## 1. Design Philosophy
 Warm, academic, and prestigious — like a heritage university with a modern interface. Cream gives a calm, paper-like reading surface; deep green gives structure and trust; bordo is used sparingly as the single "action and achievement" color. Dashboards prioritize clarity; the exam screen prioritizes focus. Consistency over novelty: use only the tokens defined here.

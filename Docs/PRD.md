@@ -1,6 +1,6 @@
 # PRD.md — SiliconBrains University Product Requirements
 
-> Source of truth for WHAT we are building. Version 0.1 (initial). Assumptions are marked **[A#]** and listed in section 17.
+> Source of truth for WHAT we are building. Version 0.2 (repository-aligned snapshot). Assumptions are marked **[A#]** and listed in section 17. This file reflects the current implementation now present in the repository as of 2026-10-23.
 
 ## 1. Project Name
 **SiliconBrains University**

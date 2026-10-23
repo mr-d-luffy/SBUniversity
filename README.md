@@ -14,6 +14,7 @@ SiliconBrains University is a role-based learning platform with student, teacher
 
 - [`web/`](./web/README.md) — Next.js frontend.
 - [`server/`](./server/README.md) — FastAPI backend, Alembic migrations, and tests.
+- [`mobile/`](./mobile/README.md) — Flutter Android client (foundation implemented; feature-complete release remains in progress).
 - [`Docs/`](./Docs/architecture.md) — product, architecture, database, design, operating, and [security/access-control](./Docs/SECURITY_AND_ACCESS_CONTROL.md) documentation.
 
 ## Local development

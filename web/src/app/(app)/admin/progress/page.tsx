@@ -3,22 +3,13 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import {
-  BookOpen,
+  
   Search,
-  Award,
-  CheckCircle2,
-  AlertTriangle,
-  RotateCcw,
-  ShieldAlert,
-  ChevronRight,
-  TrendingUp,
   Loader2,
   Users,
 } from "lucide-react";
 import { PageHeader, Card, StatCard } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { useToast } from "@/components/ui/Toast";
 import { api, getDevAuthToken } from "@/lib/api";
 
 interface CourseProgress {
@@ -50,8 +41,6 @@ interface ProgressApiResponse {
 
 export default function AdminProgressPage() {
   const { getToken } = useAuth();
-  const toast = useToast();
-
   const [records, setRecords] = useState<StudentProgressRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);

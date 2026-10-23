@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
-import { Send, Sparkles, ShieldAlert, BookOpen, Trophy, Award, RefreshCw, CheckCircle2 } from "lucide-react";
+import { Send, Sparkles, ShieldAlert, BookOpen, Trophy, Award, RefreshCw } from "lucide-react";
 import { PageHeader, Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 

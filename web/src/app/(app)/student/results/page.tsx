@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import {
   FileCheck,
@@ -11,9 +10,7 @@ import {
   XCircle,
   Clock,
   Trophy,
-  ArrowRight,
   Loader2,
-  ExternalLink,
 } from "lucide-react";
 import { PageHeader, Card, StatCard } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";

@@ -1,7 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { SignIn } from "@clerk/nextjs";
-import { GraduationCap, Sparkles, UserCheck, Shield } from "lucide-react";
+import { GraduationCap, Sparkles, Shield } from "lucide-react";
 import Link from "next/link";
 import { DemoLogin } from "@/components/features/DemoLogin";
 

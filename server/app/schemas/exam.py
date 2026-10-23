@@ -94,6 +94,7 @@ class ExamResponse(BaseModel):
     task_points: Optional[int] = None
     course_title: Optional[str] = None
     questions_count: int = 0
+    reexam_available: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -105,10 +106,12 @@ class ExamDetailResponse(ExamResponse):
 class StartAttemptResponse(BaseModel):
     attempt_id: uuid.UUID
     exam_id: uuid.UUID
+    exam_title: str
     attempt_no: int
     started_at: datetime
     expires_at: datetime
     questions: List[QuestionResponse]
+    reexam_available: bool = False
 
 
 class AutosaveAnswerRequest(BaseModel):
@@ -131,3 +134,19 @@ class SubmitAttemptResponse(BaseModel):
     grade: str
     rank_in_exam: Optional[int] = None
     task_points_awarded: int = 0
+
+
+class IntegrityViolationRequest(BaseModel):
+    reason: str = Field(pattern="^(tab_hidden|window_blur)$")
+
+
+class IntegrityReviewResponse(BaseModel):
+    attempt_id: uuid.UUID
+    exam_id: uuid.UUID
+    exam_title: str
+    course_title: str
+    student_id: uuid.UUID
+    student_name: str
+    attempt_no: int
+    reason: str
+    flagged_at: datetime

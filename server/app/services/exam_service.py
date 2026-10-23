@@ -30,6 +30,7 @@ from app.schemas.exam import (
     ExamPublishRequest,
     ExamResponse,
     ExamUpdate,
+    IntegrityReviewResponse,
     QuestionCreate,
     QuestionOptionResponse,
     QuestionResponse,
@@ -403,15 +404,17 @@ class ExamService:
         exam = await self.exam_repo.get_by_id(exam_id)
         if not exam:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found")
-        if exam.status != ExamStatus.PUBLISHED:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Exam is not published")
 
         now = datetime.now(timezone.utc)
         exam_start = ensure_utc(exam.start_at)
         exam_end = ensure_utc(exam.end_at)
-        if now < exam_start:
+        reexam_approvals = await self.exam_repo.count_reexam_approvals(exam.id, student.id)
+        has_reexam_approval = reexam_approvals > 0
+        if exam.status != ExamStatus.PUBLISHED and not has_reexam_approval:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Exam is not published")
+        if now < exam_start and not has_reexam_approval:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Exam has not started yet")
-        if now > exam_end:
+        if now > exam_end and not has_reexam_approval:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Exam has ended")
 
         # Check enrollment
@@ -428,20 +431,24 @@ class ExamService:
                 return StartAttemptResponse(
                     attempt_id=active.id,
                     exam_id=active.exam_id,
+                    exam_title=active.exam.title,
                     attempt_no=active.attempt_no,
                     started_at=active.started_at,
                     expires_at=active.expires_at,
                     questions=questions_safe,
+                    reexam_available=False,
                 )
             else:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You have another active exam attempt in progress")
 
         # Check max attempts
         attempt_count = await self.exam_repo.count_attempts(exam.id, student.id)
-        if attempt_count >= exam.max_attempts:
+        if attempt_count >= exam.max_attempts + reexam_approvals:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Maximum attempt limit ({exam.max_attempts}) reached")
 
-        expires_at = min(now + timedelta(minutes=exam.duration_minutes), exam_end)
+        expires_at = now + timedelta(minutes=exam.duration_minutes)
+        if now <= exam_end and not has_reexam_approval:
+            expires_at = min(expires_at, exam_end)
         attempt = ExamAttempt(
             exam_id=exam.id,
             student_id=student.id,
@@ -456,11 +463,59 @@ class ExamService:
         return StartAttemptResponse(
             attempt_id=saved_attempt.id,
             exam_id=saved_attempt.exam_id,
+            exam_title=exam.title,
             attempt_no=saved_attempt.attempt_no,
             started_at=saved_attempt.started_at,
             expires_at=saved_attempt.expires_at,
             questions=questions_safe,
+            reexam_available=has_reexam_approval,
         )
+
+    async def list_integrity_reviews(self, reviewer: User) -> List[IntegrityReviewResponse]:
+        attempts = await self.exam_repo.list_pending_integrity_reviews()
+        reviews: List[IntegrityReviewResponse] = []
+        for attempt in attempts:
+            course = attempt.exam.course
+            if reviewer.role == UserRole.TEACHER and not await self.course_repo.is_teacher_assigned(course.id, reviewer.id):
+                continue
+            reviews.append(IntegrityReviewResponse(
+                attempt_id=attempt.id,
+                exam_id=attempt.exam_id,
+                exam_title=attempt.exam.title,
+                course_title=course.title,
+                student_id=attempt.student_id,
+                student_name=attempt.student.full_name,
+                attempt_no=attempt.attempt_no,
+                reason=attempt.integrity_violation_reason or "unknown",
+                flagged_at=attempt.integrity_flagged_at or attempt.submitted_at or attempt.started_at,
+            ))
+        return reviews
+
+    async def approve_reexam(self, attempt_id: uuid.UUID, reviewer: User) -> None:
+        attempt = await self.exam_repo.get_attempt(attempt_id)
+        if not attempt or not attempt.integrity_violation:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Integrity review not found")
+        if reviewer.role == UserRole.TEACHER and not await self.course_repo.is_teacher_assigned(attempt.exam.course_id, reviewer.id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not assigned to this exam's course")
+        if attempt.reexam_approved_at:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A re-exam is already approved for this attempt")
+
+        attempt.reexam_approved_at = datetime.now(timezone.utc)
+        attempt.reexam_approved_by_id = reviewer.id
+        await self.exam_repo.update_attempt(attempt)
+
+    async def flag_integrity_violation(self, attempt_id: uuid.UUID, student_id: uuid.UUID, reason: str) -> SubmitAttemptResponse:
+        attempt = await self.exam_repo.get_attempt(attempt_id)
+        if not attempt or attempt.student_id != student_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attempt not found")
+        if attempt.status != AttemptStatus.IN_PROGRESS:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This exam attempt is already submitted")
+
+        attempt.integrity_violation = True
+        attempt.integrity_violation_reason = reason
+        attempt.integrity_flagged_at = datetime.now(timezone.utc)
+        await self.db.flush()
+        return await self.submit_attempt(attempt_id, student_id, is_auto=True)
 
     def _build_safe_questions(self, questions: List[Question], shuffle: bool) -> List[QuestionResponse]:
         q_list = list(questions)
@@ -549,10 +604,10 @@ class ExamService:
                 else:
                     total_score -= float(exam.negative_marking)
 
-        total_score = max(0.0, total_score)
+        total_score = 0.0 if attempt.integrity_violation else max(0.0, total_score)
         total_marks = float(exam.total_marks) or 1.0
         percentage = round((total_score / total_marks) * 100.0, 2)
-        passed = total_score >= float(exam.pass_marks)
+        passed = not attempt.integrity_violation and total_score >= float(exam.pass_marks)
         grade = compute_grade(percentage)
         time_taken = int((now - ensure_utc(attempt.started_at)).total_seconds())
 
@@ -620,16 +675,16 @@ class ExamService:
                 student_code=student_code,
                 exam_title=exam.title,
                 course_title=course_title,
-                score=total_score,
-                total_marks=total_marks,
-                percentage=percentage,
-                grade=grade,
-                passed=passed,
-                time_taken_sec=time_taken,
-                rank_in_exam=exam_rank,
-                submitted_at=now,
+                score=result_row.score,
+                total_marks=result_row.total_marks,
+                percentage=result_row.percentage,
+                grade=result_row.grade,
+                passed=result_row.passed,
+                time_taken_sec=result_row.time_taken_sec,
+                rank_in_exam=result_row.rank_in_exam or 1,
+                submitted_at=result_row.created_at,
             )
-            pdf_path = f"results/{result_row.id}.pdf"
+            pdf_path = f"results/template-v2/{result_row.id}.pdf"
             saved_path = await StorageService.upload_file(pdf_path, pdf_bytes)
             result_row.pdf_path = saved_path
             await self.result_repo.update(result_row)
@@ -662,7 +717,9 @@ class ExamService:
         ):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
-        if result.pdf_path:
+        # Regenerate previously cached PDFs once so every download uses the new
+        # supplied result-sheet template.
+        if result.pdf_path and result.pdf_path.startswith("results/template-v2/"):
             cached = await StorageService.download_file(result.pdf_path)
             if cached:
                 return cached
@@ -679,16 +736,16 @@ class ExamService:
             student_code=student_code,
             exam_title=exam.title,
             course_title=course.title,
-            score=float(result.score),
-            total_marks=float(result.total_marks),
-            percentage=float(result.percentage),
+            score=result.score,
+            total_marks=result.total_marks,
+            percentage=result.percentage,
             grade=result.grade,
             passed=result.passed,
             time_taken_sec=result.time_taken_sec,
             rank_in_exam=result.rank_in_exam or 1,
             submitted_at=result.created_at,
         )
-        pdf_path = f"results/{result.id}.pdf"
+        pdf_path = f"results/template-v2/{result.id}.pdf"
         saved = await StorageService.upload_file(pdf_path, pdf_bytes)
         result.pdf_path = saved
         await self.result_repo.update(result)

@@ -81,6 +81,9 @@ class ExamRepository:
     async def get_active_attempt_for_student(self, student_id: uuid.UUID) -> Optional[ExamAttempt]:
         stmt = (
             select(ExamAttempt)
+            .options(
+                selectinload(ExamAttempt.exam).selectinload(Exam.questions).selectinload(Question.options),
+            )
             .where(
                 ExamAttempt.student_id == student_id,
                 ExamAttempt.status == AttemptStatus.IN_PROGRESS,
@@ -98,6 +101,31 @@ class ExamRepository:
         )
         res = await self.db.execute(stmt)
         return res.scalar_one()
+
+    async def count_reexam_approvals(self, exam_id: uuid.UUID, student_id: uuid.UUID) -> int:
+        stmt = select(func.count(ExamAttempt.id)).where(
+            ExamAttempt.exam_id == exam_id,
+            ExamAttempt.student_id == student_id,
+            ExamAttempt.reexam_approved_at.is_not(None),
+        )
+        res = await self.db.execute(stmt)
+        return res.scalar_one()
+
+    async def list_pending_integrity_reviews(self) -> List[ExamAttempt]:
+        stmt = (
+            select(ExamAttempt)
+            .options(
+                selectinload(ExamAttempt.exam).selectinload(Exam.course),
+                selectinload(ExamAttempt.student),
+            )
+            .where(
+                ExamAttempt.integrity_violation.is_(True),
+                ExamAttempt.reexam_approved_at.is_(None),
+            )
+            .order_by(ExamAttempt.integrity_flagged_at.desc())
+        )
+        res = await self.db.execute(stmt)
+        return list(res.scalars().all())
 
     async def create_attempt(self, attempt: ExamAttempt) -> ExamAttempt:
         self.db.add(attempt)

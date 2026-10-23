@@ -131,7 +131,7 @@ export default function AboutPage() {
             <div><p className="text-xs font-bold uppercase tracking-wide text-green-700">Document reference SB-PP-0001</p><h2 className="mt-1 font-heading text-2xl font-bold text-green-900">Privacy Policy</h2></div>
             <p className="rounded-full bg-cream-100 px-3 py-1 text-xs font-semibold text-ink-muted">Effective 13 October 2026</p>
           </div>
-          <p className="mt-5 text-sm leading-7 text-ink-muted">This Privacy Policy explains how SiliconBrains ("we", "us", "our") collects, uses, stores, shares and protects personal data when you visit www.siliconbrains.in (the "Website"), contact us, or engage us for web engineering services such as web application development, front-end and back-end engineering, API integration, performance optimisation, hosting and maintenance. By using the Website you acknowledge that you have read and understood this Policy.</p>
+          <p className="mt-5 text-sm leading-7 text-ink-muted">This Privacy Policy explains how SiliconBrains (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;) collects, uses, stores, shares and protects personal data when you visit www.siliconbrains.in (the &quot;Website&quot;), contact us, or engage us for web engineering services such as web application development, front-end and back-end engineering, API integration, performance optimisation, hosting and maintenance. By using the Website you acknowledge that you have read and understood this Policy.</p>
           <div className="mt-6">{privacySections.map((section) => <PolicySection key={section.title} section={section} />)}</div>
         </section>
 

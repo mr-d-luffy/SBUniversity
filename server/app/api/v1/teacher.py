@@ -106,9 +106,16 @@ async def get_teacher_dashboard(
     response_model=List[TeacherTaskCourseOption],
 )
 async def list_courses_for_task_creation(
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(Course.id, Course.code, Course.title).order_by(Course.title)
+    stmt = select(Course.id, Course.code, Course.title)
+    if current_user.role == UserRole.TEACHER:
+        stmt = stmt.where(or_(
+            Course.teacher_id == current_user.id,
+            Course.teacher_assignments.any(CourseTeacher.teacher_id == current_user.id),
+        ))
+    stmt = stmt.order_by(Course.title)
     rows = (await db.execute(stmt)).all()
     return [
         TeacherTaskCourseOption(id=row.id, title=row.title, code=row.code)

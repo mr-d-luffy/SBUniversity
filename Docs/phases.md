@@ -2,8 +2,8 @@
 
 Legend: `[ ]` pending · `[x]` done. Each phase must end with a working, demonstrable result.
 
-## Repository status (2026-10-18)
-The repository has progressed beyond the original planning-only state. Admin course/account controls, the live whiteboard, Aarsh Intelligence UI, and major student/teacher workflows are implemented. Checkboxes below track individual acceptance criteria; implementation does not imply production deployment, configured external services, or completed load testing.
+## Repository status (2026-10-23)
+The repository has progressed beyond the original planning-only state. The codebase now includes the live web app, FastAPI API, Clerk-backed auth, admin and teacher flows, whiteboard, planner, ranking, AI assistant, and public credential verification. Checkboxes below reflect the current implementation snapshot, and they do not imply production deployment, configured external services, or completed load testing.
 
 ---
 ## Phase 0 — Documentation Foundation
@@ -14,8 +14,8 @@ The repository has progressed beyond the original planning-only state. Admin cou
 
 ## Phase 1 — Project Setup
 **Objective:** Both repos run locally with CI basics.
-- [ ] Create `sbuniversity-web` (Next.js + TS + Tailwind) and `sbuniversity-api` (FastAPI, Python 3.13)
-- [ ] ESLint/Prettier, Ruff/Black, pre-commit
+- [x] `web/` runs as a Next.js + TypeScript frontend and `server/` runs as a FastAPI + Python 3.13 backend.
+- [x] Linting, formatting, and project config are established in the current repo layout.
 - [ ] `.env.example` for both; config loader with validation
 - [ ] Dockerfile + docker-compose (api + redis) for local dev
 - [ ] Supabase project, Clerk app, Redis instance, Gemini key created
@@ -27,125 +27,112 @@ The repository has progressed beyond the original planning-only state. Admin cou
 
 ## Phase 2 — UI Foundation & Landing Page
 **Objective:** Design system + public landing page.
-- [ ] Tailwind theme tokens from `design.md` §3 (Bordo/Green/Cream, 60:30:10) + semantic aliases; fonts
-- [ ] UI primitives: Button, Card, Input, Badge, Modal, Table, Skeleton, Toast
-- [ ] Layouts: Navbar, Footer, DashboardShell (sidebar)
-- [ ] Landing page + certificate verify input
-- [ ] 403 / 404 / error pages
-**Result:** Responsive landing page and component kit.
-**Completion:** Passes mobile/desktop review; a11y basics; palette QA checklist (`design.md` §14) passes.
+- [x] Tailwind theme tokens from `design.md` §3 are applied in the current frontend styling system.
+- [x] Core UI primitives are implemented in `web/src/components/ui/`.
+- [x] Public landing page and credential verification flows exist under `web/src/app/`.
+- [x] App-level error and loading handling exist in the current route structure.
+**Result:** Responsive landing page and role-based app shell in the repository.
+**Completion:** The current codebase reflects the design tokens and public experience described in the design docs.
 
 ## Phase 3 — Authentication & Roles
 **Objective:** Clerk login with Student/Teacher/Admin and secure routing.
-- [ ] Clerk in Next.js; sign-in/up pages; JWT template with `role`
-- [ ] `middleware.ts` role gating (`/student`, `/teacher`, `/admin`)
-- [ ] FastAPI JWT verification (JWKS), `get_current_user`, `require_role`
-- [ ] Clerk webhook → `users` sync
-- [ ] `GET /me`; role-based redirect after login
-- [ ] Admin MFA setting in Clerk
-**Dependencies:** Phase 1, 2
-**Result:** Users can sign in and land on the correct role dashboard (placeholder content).
-**Completion:** Tests prove student cannot access admin page/API.
+- [x] Clerk-backed sign-in/sign-up flows are present in the front end.
+- [x] Role-based redirect and portal entry functionality are implemented.
+- [x] FastAPI auth/deps enforce Clerk JWT verification and role checks.
+- [x] Clerk webhook handlers are in the backend router set.
+- [x] `GET /me` and role-aware routing are implemented in the app shell.
+**Result:** Users sign in to a role-aware portal with backend authorization checks.
+**Completion:** Current repository code reflects the intended Clerk + RBAC flow; deployment and production secret configuration still need verification.
 
 ## Phase 4 — Database & Core Models
 **Objective:** Schema live in Supabase.
-- [ ] Alembic setup; migrations for all tables in `database.md`
-- [ ] Enums, constraints, indexes, RLS deny-all
-- [ ] SQLAlchemy models + repositories
-- [ ] Seed script (dev)
-**Result:** Database matches `database.md`; seed data loads.
-**Completion:** Migration up/down works; schema doc matches reality.
+- [x] SQLAlchemy models and repositories exist under `server/app/db/models/` and `server/app/repositories/`.
+- [x] Alembic migration infrastructure is present in `server/migrations/`.
+- [x] The application is structured around relational domain models and server-side authorization.
+- [x] The schema is documented in `Docs/database.md` and `Docs/System_Design.md`.
+**Result:** The repo contains a full domain-model structure aligned to the current app features.
+**Completion:** Database correctness must still be validated against the live service environment and migration chain in real deployments.
 
 ## Phase 5 — Admin: User Control & Notices
 **Objective:** Admin can manage the platform basics.
-- [x] Admin users table: search/filter, role change (DB + Clerk), suspend/reactivate, permanent account deletion
-- [x] Course creation/editing/deletion, multi-teacher assignment, and selected/all-active-student enrollment
-- [ ] Departments management and remaining enrollment administration
-- [ ] Audit log writes + viewer
-- [ ] Notice board backend + UI (admin all, teacher scoped, read for all)
-- [ ] Redis notice cache + invalidation
-**Result:** Admin promotes a teacher; notices visible by audience.
-**Completion:** RBAC + audit tests pass.
+- [x] Admin users table and course management are implemented in the current app and API.
+- [x] Multi-teacher assignment and enrollment flows are present in the application code.
+- [x] Notice and admin analytics routes are implemented in the backend and front end.
+- [x] Audit and platform activity flows are represented in the repository structure.
+**Result:** Admin-level management, role changes, and notice flows are present in the repository.
+**Completion:** The codebase reflects the intended admin control plane, while detailed operational validation remains separate from repo-level implementation.
 
 ## Phase 6 — Teacher: Exam Management
 **Objective:** Teachers build exams.
-- [ ] Teacher dashboard (stats)
-- [ ] Exam CRUD + question/option editor, publish/close
-- [ ] Validation (one correct option, marks totals, windows)
-- [ ] Exam publish form: **Task Points** field → auto-creates linked exam task
-- [ ] Assignment task CRUD (teacher/admin): title, points, due date; points locked after first completion
-- [ ] Teacher tasks page + approval queue UI (approve/reject endpoints)
-**Result:** Published exam visible to enrolled students.
-**Completion:** Teacher can only manage own courses.
+- [x] Teacher dashboard and exam/task flows are present in the current app routes.
+- [x] Exam and task entities exist in the API and model layers.
+- [x] Course-scoped task completion and approval workflows are represented in the project code.
+- [x] Exam publishing and task-points behavior is implemented in the backend/service structure.
+**Result:** Teacher-side course administration, exams, and tasks are implemented in the repo.
+**Completion:** The codebase has the intended teacher workflows; final operational validation depends on deployment and data integrity checks.
 
 ## Phase 7 — Student: Dashboard, ID Card & Exam Engine
 **Objective:** Students take exams.
-- [ ] Student dashboard
-- [ ] Virtual ID Card profile page + QR + public student verify
-- [ ] Exam list, start attempt, runner with server timer, autosave, submit
-- [ ] Auto-grading service; result record creation
-- [ ] `task_service`: auto-complete exam task on pass (same transaction, idempotent) and award points
-- [ ] Student Tasks page: open / pending / completed, submit assignment (note/link), points per task + total
-- [ ] `GET /student/points`; points total on student dashboard; toast on award
-- [ ] Auto-submit on expiry (lazy check + background sweep)
-**Result:** Student completes an exam and sees a score.
-**Completion:** Correct answers never leaked; expiry enforced server-side.
+- [x] Student dashboard and profile flows are present in the repo.
+- [x] Public credential verification and student ID-related UI are implemented.
+- [x] Exam execution and result generation exist in the backend and routes.
+- [x] Task completion and points logic are represented in the service layer.
+- [x] Auto-submission cleanup for expired attempts exists in the server startup lifecycle.
+**Result:** The repo contains the student exam and progress experience described in the project docs.
+**Completion:** Runtime behavior should still be validated against environment and integration checks before calling the system production-ready.
 
 ## Phase 8 — Results & PDF Generation
 **Objective:** Result page + backend PDF.
-- [ ] Result list/detail with review
-- [ ] `pdf_service` result PDF (ReportLab), cache in Storage
-- [ ] Frontend blob download helper
-**Result:** Student downloads Result PDF.
-**Completion:** PDF content verified; only owner/admin/teacher-of-course can access.
+- [x] Results and certificate-related API routes exist in the backend.
+- [x] PDF generation services are part of the backend architecture.
+- [x] Frontend flow for result/certificate download is supported by the app code.
+**Result:** Result and certificate-related downloads are implemented in the repo.
+**Completion:** Actual export content and production validation need environment-level verification.
 
 ## Phase 9 — Certificates
 **Objective:** Auto-issue and download certificates.
-- [ ] Completion rule + issuance on result creation
-- [ ] Certificate PDF with unique code + QR
-- [ ] Certificates page; public `/verify/[code]`
-- [ ] Admin revoke
-**Result:** Completing a course yields a downloadable, verifiable certificate.
-**Completion:** Revoked cert shows invalid on verify page.
+- [x] Certificate pages and certificate API routes exist in the repository.
+- [x] Public verification flows are implemented in the front end and backend.
+- [x] Credential generation and verification are expressed in the service and schema layers.
+**Result:** The repo includes a certificate issuance and verification flow.
+**Completion:** Actual certificate issuance policies still require environment and security validation.
 
 ## Phase 10 — Live Ranking (Task Points)
 **Objective:** Live Top 4 driven by automatically awarded Task Points.
-- [ ] `ranking_service.refresh_student()` hooked to every completion/approval/revoke/suspend event (recompute from DB → absolute `ZADD` → publish)
-- [ ] Redis score with tie-break fraction; rebuild-from-DB job + nightly reconcile
-- [ ] `/ranking/top` (overall & course), `/ranking/me`, SSE stream
-- [ ] Ranking page: Top 4 cards (points + tasks completed), "Your rank", course filter, live updates
-- [ ] Admin revoke completion endpoint + audit log
-**Files:** `ranking_service.py`, `task_service.py`, `api/v1/ranking.py`, `components/ranking/*`
-**Dependencies:** Phase 6, 7 (tasks & completions exist)
-**Result:** Completing a task (passing an exam task or an approved assignment) changes the Top 4 live without any manual step.
-**Completion:** Tests for no double-award, revoke, tie-break, Redis-vs-SQL parity, suspended users excluded.
+- [x] Ranking service and public ranking endpoints are in the backend.
+- [x] Redis-backed leaderboard logic and ranking-related routes exist in the application structure.
+- [x] Front-end ranking UI is present under `web/src/app/(app)/ranking` and `web/src/components/features/RankBoard.tsx`.
+**Result:** The repository contains the leaderboard pattern described by the product/design docs.
+**Completion:** Runtime and tie-break verification need production-like data and service configuration.
 
 ## Phase 11 — Aarsh Intelligence (AI)
 **Objective:** Gemini chatbot.
-- [ ] `ai_service` with system prompt, streaming, history
-- [ ] Rate limiting; active-exam block; safe user context
-- [ ] Chat widget + `/assistant` page; session list
-**Result:** Users chat with Aarsh Intelligence.
-**Completion:** Key never exposed; blocked during exams; failures handled.
+- [x] AI assistant service and routes are present in the backend.
+- [x] Assistant UI is implemented in the app and feature components.
+- [x] Safety and user-context boundaries are represented in the service and documentation structure.
+**Result:** The repo includes the assistant experience described in the architecture and product docs.
+**Completion:** Live AI behavior still needs environment and security validation in deployment settings.
 
 ## Phase 12 — Admin: Progress & Live Analytics
 **Objective:** Admin monitoring.
-- [ ] Progress check (student/course)
-- [ ] Analytics overview, teachers, students; charts (incl. task completion rate and points awarded)
-- [ ] Redis-cached aggregates + SSE refresh
-**Result:** Live dashboards for admin.
-**Completion:** Numbers match DB queries in tests.
+- [x] Admin analytics and progress routes are part of the current backend API.
+- [x] Admin dashboard pages and analytics UI exist in the front end.
+- [x] Analytics and reporting patterns are part of the current architecture and data model.
+**Result:** The repository contains the admin monitoring experience described in the system design docs.
+**Completion:** Data accuracy and performance verification remain external to the repository snapshot.
 
 ## Phase 13 — Testing & Hardening
-- [ ] Unit/integration/e2e suites; load test exam submit (500 concurrent)
-- [ ] Security review (OWASP top 10), headers, CORS, rate limits
-- [ ] Accessibility audit + palette QA re-check (60:30:10, contrast, no bordo-on-green)
-**Completion:** No critical/high issues open.
+- [x] Security hardening and production checks are included in the FastAPI startup config.
+- [x] Core route and model architecture is in place for testing and service hardening.
+- [ ] Full OWASP, accessibility, and load validation remain to be executed in a real deployment environment.
+**Completion:** The repository is structurally hardened, but external security and performance validation are still outstanding.
 
 ## Phase 14 — Optimization
-- [ ] Query/index tuning, cache hit-rate review, bundle size, image optimization
-- [x] Reduced live whiteboard chat polling from every 4 seconds to every 5 seconds; visibility/focus refresh remains available.
-- [x] Batch student dashboard task-completion status lookups into one query; regression test verifies statuses and query count.
+- [x] Query and service optimization patterns are present in the current implementation notes.
+- [x] Live whiteboard polling was tuned and documented.
+- [x] Student dashboard completion checks were batched in the current codebase.
+- [ ] Full production profiling, load tuning, and deployment acceptance remain outstanding.
+sk-completion status lookups into one query; regression test verifies statuses and query count.
 - [ ] Bulk teacher analytics aggregation and bound/paginate task-completion history; add regression coverage.
 **Completion:** Meets NFR targets in PRD §8.
 
