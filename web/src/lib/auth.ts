@@ -38,8 +38,12 @@ export async function getSession(): Promise<Session | null> {
     (claims?.first_name as string | undefined) ??
     "User";
 
+  // Never guess a student role when the token omits role metadata. The API
+  // authorizes from the database, so guessing here can render the wrong portal.
+  if (!role || !(role in ROLE_HOME)) return null;
+
   return {
-    role: role && role in ROLE_HOME ? role : "student",
+    role,
     name,
   };
 }
