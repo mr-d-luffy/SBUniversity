@@ -37,10 +37,28 @@ async def clerk_webhook(
             logger.error("Clerk webhook verification failed: %s", e)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid signature")
     else:
-        payload = json.loads(body.decode("utf-8"))
+        try:
+            payload = json.loads(body)
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Webhook body must contain valid JSON",
+            ) from e
+
+    if not isinstance(payload, dict):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Webhook payload must be a JSON object",
+        )
 
     event_type = payload.get("type")
     data = payload.get("data", {})
+    if not isinstance(event_type, str) or not isinstance(data, dict):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Webhook payload must include a string type and object data",
+        )
+
     user_repo = UserRepository(db)
 
     logger.info("Received Clerk webhook event: %s", event_type)
