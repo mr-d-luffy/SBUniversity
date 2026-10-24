@@ -1,13 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { clerkMiddleware } from "@clerk/nextjs/server";
 
-type Role = "student" | "teacher" | "admin";
-const HOME: Record<Role, string> = {
-  student: "/student/dashboard",
-  teacher: "/teacher/dashboard",
-  admin: "/admin/users",
-};
-const SCOPED: Role[] = ["student", "teacher", "admin"];
+const SCOPED = ["student", "teacher", "admin"];
 const SHARED = ["/ranking", "/notices", "/assistant"];
 
 function createNonce() {
@@ -64,14 +58,8 @@ function secureRedirect(url: URL) {
   return addSecurityHeaders(response, nonce);
 }
 
-/**
- * Returns a redirect response when the visitor should not view `path`.
- *
- * @param role  - Role from JWT claims. `undefined` means authenticated but
- *                no role in the JWT yet (page-level guard will handle it).
- *                `null` means not signed in at all.
- */
-function decide(req: NextRequest, role: Role | null | undefined) {
+/** Require a signed-in user; the app layout checks the authoritative DB role. */
+function decide(req: NextRequest, authenticated: boolean) {
   const path = req.nextUrl.pathname;
   const scope = SCOPED.find(
     (r) => path === `/${r}` || path.startsWith(`/${r}/`),
@@ -81,15 +69,7 @@ function decide(req: NextRequest, role: Role | null | undefined) {
   // Not a protected path — let it through
   if (!scope && !isShared) return null;
 
-  // Not authenticated at all → sign-in
-  if (role === null) return secureRedirect(new URL("/sign-in", req.url));
-
-  // Authenticated but JWT has no role yet → let through; page guard handles it
-  if (role === undefined) return null;
-
-  // Authenticated with a role, but in the wrong scope → redirect to their home
-  if (scope && scope !== role)
-    return secureRedirect(new URL(HOME[role], req.url));
+  if (!authenticated) return secureRedirect(new URL("/sign-in", req.url));
 
   return null;
 }
@@ -111,29 +91,13 @@ function nextWithHeaders(req: NextRequest) {
 
 // Demo mode: role comes from a cookie
 const demoMiddleware = (req: NextRequest) =>
-  decide(req, req.cookies.get("sbu_demo")?.value as Role | undefined) ??
+  decide(req, Boolean(req.cookies.get("sbu_demo")?.value)) ??
   nextWithHeaders(req);
 
-// Production mode: role comes from Clerk JWT claims
+// Production mode: Clerk establishes authentication; the database supplies roles.
 const prodMiddleware = clerkMiddleware(async (auth, req) => {
-  const { sessionClaims } = await auth();
-  const claims = sessionClaims as Record<string, unknown> | undefined;
-
-  // Not signed in
-  if (!claims) return decide(req, null) ?? nextWithHeaders(req);
-
-  // Read role only from JWT — never assume "student" as fallback.
-  // If role isn't in the JWT, it stays `undefined` and the page component
-  // (which calls currentUser()) will do the authoritative role check.
-  const metadata = (
-    claims?.metadata ?? claims?.publicMetadata ?? claims?.public_metadata
-  ) as Record<string, unknown> | undefined;
-  const role: Role | undefined =
-    (metadata?.role as Role | undefined) ??
-    (claims?.role as Role | undefined) ??
-    undefined;
-
-  return decide(req, role) ?? nextWithHeaders(req);
+  const { userId } = await auth();
+  return decide(req, Boolean(userId)) ?? nextWithHeaders(req);
 });
 
 export const proxy = process.env.NEXT_PUBLIC_DEMO_MODE === "true"
