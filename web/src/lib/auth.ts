@@ -24,13 +24,22 @@ export async function getSession(): Promise<Session | null> {
     const role = (await cookies()).get(DEMO_COOKIE)?.value as Role | undefined;
     return role && role in DEMO_USERS ? { role, name: DEMO_USERS[role].name } : null;
   }
-  const { currentUser } = await import("@clerk/nextjs/server");
-  const user = await currentUser();
-  if (!user) return null;
-  const rawRole =
-    (user.publicMetadata?.role as Role | undefined) ??
-    (user.privateMetadata?.role as Role | undefined) ??
-    (user.unsafeMetadata?.role as Role | undefined) ??
-    "student";
-  return { role: rawRole, name: user.fullName ?? user.firstName ?? "User" };
+  const { auth } = await import("@clerk/nextjs/server");
+  const { userId, sessionClaims } = await auth();
+  if (!userId) return null;
+
+  const claims = sessionClaims as Record<string, unknown> | null;
+  const metadata = (
+    claims?.metadata ?? claims?.publicMetadata ?? claims?.public_metadata
+  ) as Record<string, unknown> | undefined;
+  const role = (metadata?.role ?? claims?.role) as Role | undefined;
+  const name =
+    (claims?.name as string | undefined) ??
+    (claims?.first_name as string | undefined) ??
+    "User";
+
+  return {
+    role: role && role in ROLE_HOME ? role : "student",
+    name,
+  };
 }

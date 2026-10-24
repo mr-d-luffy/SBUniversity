@@ -70,14 +70,14 @@ export default function StudentProfilePage() {
 
   // Real ID card state
   const [cardData, setCardData] = useState<StudentCardData>({
-    name: "Student",
-    student_code: "SBU-2026-0001",
-    department: "Computer Science & Engineering",
-    batch_year: 2026,
-    phone: "+91 00011-00011",
+    name: "",
+    student_code: "",
+    department: null,
+    batch_year: null,
+    phone: null,
     photo_url: null,
-    valid_until: "June 30, 2028",
-    qr_verify_url: "/verify/student",
+    valid_until: null,
+    qr_verify_url: "",
     status: "active",
     email: "student@sbuniversity.edu",
   });
@@ -106,11 +106,11 @@ export default function StudentProfilePage() {
         api<MeApiResponse>("/me", token ?? undefined).catch(() => null),
       ]);
 
-      const name = idCardRes?.name || meRes?.full_name || user?.fullName || "SiliconBrains University Student";
-      const studentCode = idCardRes?.student_code || meRes?.student_profile?.student_code || "SBU-2026-0001";
-      const department = idCardRes?.department || meRes?.student_profile?.department?.name || "Computer Science & Engineering";
-      const batchYear = idCardRes?.batch_year || meRes?.student_profile?.batch_year || 2026;
-      const phone = idCardRes?.phone || meRes?.student_profile?.phone || "+91 00011-00011";
+      const name = idCardRes?.name || meRes?.full_name || user?.fullName || "Student";
+      const studentCode = idCardRes?.student_code || meRes?.student_profile?.student_code || "";
+      const department = idCardRes?.department ?? meRes?.student_profile?.department?.name ?? null;
+      const batchYear = idCardRes?.batch_year ?? meRes?.student_profile?.batch_year ?? null;
+      const phone = idCardRes?.phone ?? meRes?.student_profile?.phone ?? null;
       const academicTerm = idCardRes?.academic_term ?? meRes?.student_profile?.academic_term ?? null;
       const verificationStatus = idCardRes?.verification_status ?? meRes?.student_profile?.verification_status ?? "not_verified";
       const storedPhoto = idCardRes?.photo_url || meRes?.avatar_url || null;
@@ -139,8 +139,8 @@ export default function StudentProfilePage() {
         batch_year: batchYear,
         phone,
         photo_url: photoUrl,
-        valid_until: idCardRes?.valid_until ? new Date(idCardRes.valid_until).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "June 30, 2028",
-        qr_verify_url: `/verify/${studentCode}`,
+        valid_until: idCardRes?.valid_until ? new Date(`${idCardRes.valid_until}T00:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : null,
+        qr_verify_url: idCardRes?.qr_verify_url || (studentCode ? `/verify/${studentCode}` : ""),
         status,
         email,
       };
@@ -209,7 +209,8 @@ export default function StudentProfilePage() {
     }
   };
 
-  const batchString = cardData.batch_year ? `${cardData.batch_year - 2} – ${cardData.batch_year + 2}` : "2024 – 2028";
+  const batchString = cardData.batch_year ? `${cardData.batch_year - 2} – ${cardData.batch_year + 2}` : "Not set";
+  const verificationLabel = cardData.verification_status === "verified" ? "Verified" : "Not verified";
 
   return (
     <div className="space-y-6">
@@ -296,16 +297,20 @@ export default function StudentProfilePage() {
                   <div className="flex justify-between gap-2">
                     <span className="text-ink-muted">Department:</span>
                     <span className="min-w-0 max-w-[170px] truncate text-right font-medium text-ink">
-                      {cardData.department || "Computer Science & Engineering"}
+                      {cardData.department || "Not set"}
                     </span>
                   </div>
                   <div className="flex justify-between gap-2">
-                    <span className="text-ink-muted">Batch:</span>
-                    <span className="font-medium text-ink">{batchString}</span>
+                    <span className="shrink-0 text-ink-muted">Academic Term:</span>
+                    <span className="min-w-0 truncate text-right font-medium text-ink">
+                      {cardData.academic_term || "Not set"}
+                    </span>
                   </div>
                   <div className="flex justify-between gap-2">
-                    <span className="text-ink-muted">Valid Until:</span>
-                    <span className="font-medium text-ink">{cardData.valid_until}</span>
+                    <span className="text-ink-muted">Verification Status:</span>
+                    <span className={`font-semibold ${cardData.verification_status === "verified" ? "text-green-700" : "text-bordo-700"}`}>
+                      {verificationLabel}
+                    </span>
                   </div>
                 </div>
 
@@ -317,7 +322,7 @@ export default function StudentProfilePage() {
                     </div>
                   </div>
                   <Link
-                    href={cardData.qr_verify_url}
+                    href={cardData.qr_verify_url || "/verify"}
                     className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-green-700 hover:underline"
                   >
                     <span>Scan to verify credential</span>
@@ -328,8 +333,8 @@ export default function StudentProfilePage() {
 
               {/* Bottom Bordo Accent Stripe */}
               <div className="flex h-4 w-full items-center justify-between gap-2 bg-bordo-700 px-3 text-[8px] font-semibold uppercase tracking-wider text-cream-50 sm:text-[9px]">
-                <span>SBU VERIFIED</span>
-                <span>ACADEMIC YEAR 2026</span>
+                <span>{cardData.verification_status === "verified" ? "SBU VERIFIED" : "VERIFICATION PENDING"}</span>
+                <span>ACADEMIC YEAR {new Date().getFullYear()}</span>
               </div>
             </div>
           </div>
@@ -352,7 +357,7 @@ export default function StudentProfilePage() {
                   <span className="flex items-center gap-2 text-xs font-medium text-ink-muted">
                     <Building size={14} className="text-green-700" /> Department
                   </span>
-                  <p className="mt-1 break-words font-semibold text-green-900">{cardData.department}</p>
+                  <p className="mt-1 break-words font-semibold text-green-900">{cardData.department || "Not set"}</p>
                 </div>
 
                 <div className="rounded-lg bg-cream-50 p-3.5">
