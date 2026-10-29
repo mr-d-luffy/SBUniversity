@@ -1,32 +1,28 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, GraduationCap, ShieldCheck, ScrollText } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { GraduationCap, ShieldCheck, ScrollText, Scale } from "lucide-react";
+import { AboutBackButton } from "@/components/features/AboutBackButton";
 
 export const metadata: Metadata = {
-  title: "About, Privacy Policy & Terms of Use",
-  description: "Learn about SiliconBrains University and read our Privacy Policy and Terms of Use.",
+  title: "About, Privacy Policy, Terms of Use & License",
+  description: "Learn about SiliconBrains University and read our Privacy Policy, Terms of Use and software license.",
   alternates: { canonical: "/about" },
 };
 
+const licenseText = readFileSync(path.resolve(process.cwd(), "../LICENSE.md"), "utf8");
+
 const privacySections = [
-  { title: "1. Who We Are", paragraphs: ["SiliconBrains is an independent web engineering practice led by a Senior Web Engineer. For the purposes of applicable data protection law, we act as the Data Fiduciary / Data Controller of personal data collected through the Website."], bullets: ["Business name: SiliconBrains (Silicon Brains)", "Website: www.siliconbrains.in", "Privacy contact: privacy@siliconbrains.in", "Location: Nagpur, India, 440034"] },
-  { title: "2. Information We Collect", paragraphs: ["We collect only the information needed to operate the Website and deliver our services."], bullets: ["Information you provide: name, email address, phone number, company name, project details, budget and timeline, and any files or messages you send through contact forms, email or chat.", "Client project data: credentials, repository access, content, analytics or user data that you share with us while we deliver a project. This is handled under Section 8.", "Technical data collected automatically: IP address, browser type and version, device type, operating system, referring page, pages viewed, time spent, and approximate location derived from IP.", "Cookies and similar technologies: see Section 5.", "Communications: records of emails, calls and meetings relating to enquiries and engagements.", "Payment and billing data: invoicing details only. Card or bank details are processed by third-party payment providers and are not stored on our servers."] },
-  { title: "3. How We Use Your Information", bullets: ["To respond to enquiries, prepare proposals and quotations, and deliver contracted services.", "To operate, secure, debug and improve the Website and its performance.", "To send project updates, invoices, and service-related notices.", "To send newsletters or marketing messages only where you have opted in; you can withdraw at any time.", "To analyse aggregated usage and understand how visitors use the Website.", "To detect, prevent and respond to fraud, abuse, spam and security incidents.", "To comply with legal, tax and accounting obligations and to enforce our agreements."] },
-  { title: "4. Legal Basis for Processing", paragraphs: ["Depending on your location, we process personal data on one or more of the following bases: your consent (including consent under the Digital Personal Data Protection Act, 2023 of India); performance of a contract or steps taken at your request before entering a contract; our legitimate interests in running and securing a professional services business; and compliance with legal obligations."] },
-  { title: "5. Cookies and Tracking Technologies", paragraphs: ["Cookies are small text files stored on your device. We use the following categories:"], bullets: ["Strictly necessary: required for security, load balancing and core site functionality.", "Preferences: remember settings such as theme or language.", "Analytics: help us understand traffic and performance, using privacy-respecting configurations where possible.", "Marketing: used only with your consent."], after: "You can control or delete cookies through your browser settings or our cookie banner. Blocking some cookies may affect how the Website works." },
-  { title: "6. Third-Party Services", paragraphs: ["We rely on trusted providers to run the Website and our services. These may include hosting and CDN providers, analytics tools, email and form-handling services, code hosting platforms, error monitoring, scheduling tools and payment processors. They process data only on our instructions or under their own privacy terms, and only as needed to provide their service. We do not sell your personal data. The Website may link to external sites; we are not responsible for their privacy practices."] },
-  { title: "7. Sharing and Disclosure", paragraphs: ["We share personal data only: (a) with service providers described above; (b) with professional advisers such as accountants and lawyers under confidentiality; (c) where required by law, court order or government authority; (d) to protect our rights, safety or property; and (e) in connection with a business transfer, with notice to you where required."] },
-  { title: "8. Client Project Data and Confidentiality", paragraphs: ["When we work on a client's website or application, we may access source code, databases, credentials and end-user data belonging to the client. In that case the client remains responsible for the data and we act as a processor on its behalf. We will:"], bullets: ["access only the data necessary to perform the agreed work;", "keep credentials in secure password managers and never commit them to public repositories;", "use production data for testing only when unavoidable, and anonymise it wherever possible;", "revoke access and delete project copies within a reasonable period after project completion, unless retention is agreed in writing;", "report any confirmed breach affecting client data without undue delay."] },
-  { title: "9. International Data Transfers", paragraphs: ["Our providers may store or process data in countries other than your own, including outside India. Where required, we use appropriate safeguards such as contractual protections to ensure your data receives an adequate level of protection."] },
-  { title: "10. Data Retention", paragraphs: ["We keep personal data only as long as necessary for the purposes described. Typical periods: enquiry and contact records up to 24 months after last contact; client engagement records for the duration of the contract and up to 8 years afterwards for tax and legal compliance; analytics data in aggregated or anonymised form; marketing subscriptions until you unsubscribe. We securely delete or anonymise data when it is no longer required."] },
-  { title: "11. Data Security", paragraphs: ["We apply reasonable technical and organisational measures, including HTTPS/TLS encryption in transit, access controls and least-privilege permissions, multi-factor authentication on key accounts, regular software updates and dependency patching, and backups. No method of transmission or storage is completely secure, so we cannot guarantee absolute security."] },
-  { title: "12. Your Rights", paragraphs: ["Subject to applicable law (including the DPDP Act 2023 in India, the GDPR/UK GDPR in Europe and the CCPA/CPRA in California), you may have the right to:"], bullets: ["access the personal data we hold about you and obtain a summary of it;", "correct inaccurate or incomplete data and request erasure of data no longer needed;", "withdraw consent at any time, without affecting earlier lawful processing;", "object to or restrict certain processing, and request data portability;", "nominate another person to exercise your rights in the event of death or incapacity (India);", "lodge a grievance with us or a complaint with your local data protection authority."], after: "To exercise any right, email privacy@siliconbrains.in. We may need to verify your identity and will respond within the period required by law, generally within 30 days." },
-  { title: "13. Children's Privacy", paragraphs: ["The Website is intended for businesses and adults. We do not knowingly collect personal data from children under 18 without verifiable parental consent. If you believe a child has provided us data, contact us and we will delete it promptly."] },
-  { title: "14. Do Not Track and Marketing Choices", paragraphs: ["We aim to respect browser Do Not Track and Global Privacy Control signals where technically feasible. Every marketing email includes an unsubscribe link."] },
-  { title: "15. Changes to This Policy", paragraphs: ["We may update this Policy from time to time. The Effective Date at the top shows when it was last revised. Material changes will be highlighted on the Website or communicated by email. Continued use of the Website after an update means you accept the revised Policy."] },
-  { title: "16. Grievance Officer and Contact", paragraphs: ["For questions, requests or grievances about this Policy or your personal data, contact the Privacy Officer at privacy@siliconbrains.in. The supplied policy lists Nagpur, India, 440034 as the address and states that requests are acknowledged within 72 hours and resolved within 30 days."] },
+  { title: "1. Data we handle", paragraphs: ["SiliconBrains University processes account details (name, email and profile image), student or teacher profile information (such as phone, academic affiliation, student or employee code, and optional date of birth), and records created while using the platform."], bullets: ["Learning records can include course enrolments, tasks and submissions, exam answers and results, certificates, activity summaries, planner entries, assistant conversations, community messages and whiteboard content.", "The service also processes authentication/session data and technical security events needed to protect accounts and operate the platform."] },
+  { title: "2. Why we use it", paragraphs: ["We use this information to authenticate users; provide course, assessment, credential and communication features; administer academic records; support users; maintain platform security; and meet applicable legal obligations. Profile details can be corrected in the profile tools where available. We do not use learning activity for targeted advertising."] },
+  { title: "3. Service providers and transfers", paragraphs: ["The platform uses Clerk for authentication, configured database and hosting providers for application data, and Supabase Storage when configured for uploaded files. The learning assistant may send the prompt and conversation context you submit to the configured AI provider to generate a response. Provider locations and retention depend on the deployment configuration; contact us for current processor details. Providers may process data outside India, subject to applicable requirements."] },
+  { title: "4. Retention and deletion", paragraphs: ["Account and learning data are retained while needed to operate the service and maintain academic records. You can request account deletion from your profile. Deletion removes the account and associated records from the application where dependencies permit; some records may need to be retained where law requires it. Backups and third-party systems may take time to expire, and this project does not yet publish a verified backup expiry schedule."] },
+  { title: "5. Children", paragraphs: ["The platform is designed for educational use and may be used by students under 18. The current signup flow does not implement an age gate or verifiable parental-consent workflow. Institutions and guardians should contact us before enrolling a child; this notice does not claim that a parental-verification process is currently available."] },
+  { title: "6. Your choices and rights", paragraphs: ["You can view your account profile and update supported fields in the portal. You can request a copy, correction, deletion, or other assistance by emailing privacy@siliconbrains.in. Identity verification may be needed before we disclose or delete information. If you are not satisfied with our response, you may use the grievance and complaint routes available under applicable law, including the Data Protection Board of India where applicable."] },
+  { title: "7. Security", paragraphs: ["The service uses authenticated access, role-based authorization, transport security, and security event logging. No online service can guarantee absolute security. If you suspect unauthorized access to your account or data, contact privacy@siliconbrains.in promptly."] },
+  { title: "8. Contact and review", paragraphs: ["For privacy requests or grievances, contact privacy@siliconbrains.in. Notice version 2.0, reviewed 28 October 2026. This notice describes current application behaviour and should be reviewed by the organization’s privacy/legal owner before production use."] },
 ];
 
 const termsSections = [
@@ -47,9 +43,10 @@ const termsSections = [
 const teamMembers = [
   { name: "Mohit Shivankar", role: "Team Leader", image: "/team/mohit-shivankar-portrait.jpeg", featured: true },
   { name: "Vaishnavi Mohite", role: "Chief Technology Officer", image: "/team/vaishnavi-mohite-portrait.jpeg" },
-  { name: "Mohit Gurnule", role: "Chief Financial Officer", image: "/team/mohit-gurnule-portrait.jpeg" },
+  { name: "Mohit Gurnule", role: "Chief Security Manager", image: "/team/mohit-gurnule-portrait.jpeg" },
   { name: "Hemant Tripathi", role: "Project Manager", image: "/team/hemant-tripathi-portrait.jpeg" },
   { name: "Raj Pande", role: "Social Media Manager", image: "/team/raj-pande-portrait.jpeg" },
+  { name: "Shlok Thakur", role: "Team Manager", image: "/team/shlok-thakur-portrait.jpg" },
 ];
 
 function PolicySection({ section }: { section: { title: string; paragraphs?: string[]; bullets?: string[]; after?: string } }) {
@@ -72,7 +69,7 @@ export default function AboutPage() {
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-green-700 text-cream-200"><GraduationCap size={20} /></span>
             <span className="truncate">SiliconBrains University</span>
           </Link>
-          <Button href="/" variant="secondary" size="sm" className="w-full justify-center min-[480px]:w-auto"><ArrowLeft size={14} /> Back to University</Button>
+          <AboutBackButton />
         </div>
       </header>
 
@@ -124,15 +121,24 @@ export default function AboutPage() {
           <a href="#team" className="inline-flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-green-900 hover:bg-green-50"><GraduationCap size={16} /> Team</a>
           <a href="#privacy" className="inline-flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-green-900 hover:bg-green-50"><ShieldCheck size={16} /> Privacy Policy</a>
           <a href="#terms" className="inline-flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-green-900 hover:bg-green-50"><ScrollText size={16} /> Terms of Use</a>
+          <a href="#license" className="inline-flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-green-900 hover:bg-green-50"><Scale size={16} /> License</a>
         </nav>
 
         <section id="privacy" className="mt-8 scroll-mt-24 rounded-2xl border border-cream-300 bg-white p-5 shadow-sm sm:p-8">
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-cream-200 pb-5">
             <div><p className="text-xs font-bold uppercase tracking-wide text-green-700">Document reference SB-PP-0001</p><h2 className="mt-1 font-heading text-2xl font-bold text-green-900">Privacy Policy</h2></div>
-            <p className="rounded-full bg-cream-100 px-3 py-1 text-xs font-semibold text-ink-muted">Effective 13 October 2026</p>
+            <p className="rounded-full bg-cream-100 px-3 py-1 text-xs font-semibold text-ink-muted">Effective 28 October 2026</p>
           </div>
-          <p className="mt-5 text-sm leading-7 text-ink-muted">This Privacy Policy explains how SiliconBrains (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;) collects, uses, stores, shares and protects personal data when you visit www.siliconbrains.in (the &quot;Website&quot;), contact us, or engage us for web engineering services such as web application development, front-end and back-end engineering, API integration, performance optimisation, hosting and maintenance. By using the Website you acknowledge that you have read and understood this Policy.</p>
+          <p className="mt-5 text-sm leading-7 text-ink-muted">This notice describes personal data processed by SiliconBrains University when you use its learning platform, academic tools and related services. It is an engineering-facing description of the current application; the organization should have its privacy/legal owner verify the notice and operational practices.</p>
           <div className="mt-6">{privacySections.map((section) => <PolicySection key={section.title} section={section} />)}</div>
+        </section>
+
+        <section id="license" className="mt-8 scroll-mt-24 rounded-2xl border border-cream-300 bg-white p-5 shadow-sm sm:p-8">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-cream-200 pb-5">
+            <div><p className="text-xs font-bold uppercase tracking-wide text-green-700">SiliconBrains Software &amp; Technology Division</p><h2 className="mt-1 font-heading text-2xl font-bold text-green-900">Software License Agreement</h2></div>
+            <p className="rounded-full bg-cream-100 px-3 py-1 text-xs font-semibold text-ink-muted">Version 1.0 · Effective 18 October 2026</p>
+          </div>
+          <pre className="mt-5 overflow-x-auto whitespace-pre-wrap break-words font-sans text-sm leading-7 text-ink-muted">{licenseText}</pre>
         </section>
 
         <section id="terms" className="mt-8 scroll-mt-24 rounded-2xl border border-cream-300 bg-white p-5 shadow-sm sm:p-8">

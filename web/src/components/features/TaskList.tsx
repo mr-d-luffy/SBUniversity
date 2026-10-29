@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { Badge, PointsChip } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -17,6 +18,8 @@ import {
   AlertCircle,
   Play,
   BookOpen,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { YoutubeVideoTracker } from "@/components/features/YoutubeVideoTracker";
 
@@ -53,6 +56,9 @@ export function TaskList({ initial }: { initial?: TaskItem[] }) {
   const [loading, setLoading] = useState(!initial || initial.length === 0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<(typeof filters)[number]>("all");
+  const [hiddenCourses, setHiddenCourses] = useState<Set<string>>(() => new Set());
+  const [courseId, setCourseId] = useState<string | null>(null);
+  const [routeReady, setRouteReady] = useState(false);
 
   const [submittingTask, setSubmittingTask] = useState<TaskItem | null>(null);
   const [submissionNote, setSubmissionNote] = useState("");
@@ -74,7 +80,8 @@ export function TaskList({ initial }: { initial?: TaskItem[] }) {
     setLoadError(null);
     try {
       const token = await resolveToken();
-      const data = await api<TaskItem[]>("/tasks", token ?? undefined);
+      const query = courseId ? `?course_id=${encodeURIComponent(courseId)}` : "";
+      const data = await api<TaskItem[]>(`/tasks${query}`, token ?? undefined);
       setItems(data);
     } catch (err) {
       console.error("Failed to fetch tasks:", err);
@@ -82,7 +89,7 @@ export function TaskList({ initial }: { initial?: TaskItem[] }) {
     } finally {
       setLoading(false);
     }
-  }, [resolveToken]);
+  }, [courseId, resolveToken]);
 
   const reportVideoProgress = useCallback(
     (taskId: string, progressPercent: number, videoDurationSeconds: number) => {
@@ -126,8 +133,14 @@ export function TaskList({ initial }: { initial?: TaskItem[] }) {
   );
 
   useEffect(() => {
-    loadTasks();
-  }, [loadTasks]);
+    const requestedCourseId = new URLSearchParams(window.location.search).get("course_id");
+    setCourseId(requestedCourseId);
+    setRouteReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (routeReady) void loadTasks();
+  }, [loadTasks, routeReady]);
 
   function getComputedStatus(t: TaskItem): "open" | "pending" | "done" {
     if (t.my_status === "completed") return "done";
@@ -189,6 +202,12 @@ export function TaskList({ initial }: { initial?: TaskItem[] }) {
   return (
     <>
       {/* Filter Tabs */}
+      {courseId && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-cream-200 bg-white px-4 py-3">
+          <p className="text-sm text-ink-muted">Showing tasks for the selected course.</p>
+          <Link href="/student/tasks" className="inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-green-800 hover:bg-cream-100">Show all course tasks</Link>
+        </div>
+      )}
       <div className="mb-6 flex flex-wrap gap-2" role="tablist" aria-label="Filter tasks">
         {filters.map((f) => (
           <button
@@ -237,11 +256,28 @@ export function TaskList({ initial }: { initial?: TaskItem[] }) {
                   </span>
                   <h2 className="truncate font-heading text-sm font-bold text-green-900 sm:text-base">{group.title}</h2>
                 </div>
-                <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-ink-muted">
-                  {group.tasks.length} task{group.tasks.length === 1 ? "" : "s"}
-                </span>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-ink-muted">
+                    {group.tasks.length} task{group.tasks.length === 1 ? "" : "s"}
+                  </span>
+                  <button
+                    type="button"
+                    aria-expanded={!hiddenCourses.has(group.id)}
+                    aria-controls={`course-tasks-${group.id}`}
+                    onClick={() => setHiddenCourses((current) => {
+                      const next = new Set(current);
+                      if (next.has(group.id)) next.delete(group.id);
+                      else next.add(group.id);
+                      return next;
+                    })}
+                    className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-green-800 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-700"
+                  >
+                    {hiddenCourses.has(group.id) ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                    <span>{hiddenCourses.has(group.id) ? "Show" : "Hide"}</span>
+                  </button>
+                </div>
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
+              {!hiddenCourses.has(group.id) && <div id={`course-tasks-${group.id}`} className="grid gap-4 md:grid-cols-2">
           {group.tasks.map((t) => {
             const status = getComputedStatus(t);
             const dueStr = t.due_at
@@ -348,7 +384,7 @@ export function TaskList({ initial }: { initial?: TaskItem[] }) {
               </Card>
             );
           })}
-              </div>
+              </div>}
             </section>
           ))}
         </div>

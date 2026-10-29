@@ -37,6 +37,10 @@ async def list_tasks(
     if current_user.role == UserRole.STUDENT:
         enrollments = await course_repo.list_student_enrollments(current_user.id)
         enrolled_ids = [e.course_id for e in enrollments if e.status == EnrollmentStatus.ACTIVE]
+        if course_id is not None and course_id not in enrolled_ids:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Course not found"
+            )
         filtered_tasks = await repo.list_student_tasks(
             current_user.id, enrolled_ids, course_id
         )

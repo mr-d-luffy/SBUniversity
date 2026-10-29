@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useAuth, useUser } from "@clerk/nextjs";
+import { useAuth, useClerk, useUser } from "@clerk/nextjs";
 import {
   GraduationCap,
   QrCode,
@@ -61,11 +61,13 @@ interface MeApiResponse {
 
 export default function StudentProfilePage() {
   const { getToken } = useAuth();
+  const { signOut } = useClerk();
   const { user } = useUser();
   const toast = useToast();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   // Real ID card state
@@ -206,6 +208,23 @@ export default function StudentProfilePage() {
       toast(msg);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!window.confirm("Delete your account and associated learning records? This cannot be undone.")) return;
+    setDeletingAccount(true);
+    try {
+      const token = await resolveToken();
+      await api<void>("/me", token ?? undefined, { method: "DELETE" });
+      try {
+        await signOut({ redirectUrl: "/" });
+      } catch {
+        window.location.assign("/");
+      }
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not delete your account.");
+      setDeletingAccount(false);
     }
   };
 
@@ -439,6 +458,14 @@ export default function StudentProfilePage() {
           </div>
         </div>
       )}
+
+      <Card>
+        <h3 className="text-lg font-bold text-green-900">Privacy and account</h3>
+        <p className="mt-1 text-sm leading-6 text-ink-muted">Review the <Link href="/about#privacy" className="font-semibold text-green-700 underline">Privacy Notice</Link> or request deletion of your account. Deletion removes the account from this platform and may remove associated learning records.</p>
+        <Button type="button" variant="danger" size="sm" className="mt-4" onClick={handleDeleteAccount} disabled={deletingAccount}>
+          {deletingAccount ? "Deleting account…" : "Delete my account"}
+        </Button>
+      </Card>
 
       {/* Edit ID Card Modal */}
       {isEditModalOpen && (

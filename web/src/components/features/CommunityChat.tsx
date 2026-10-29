@@ -271,6 +271,10 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
   );
 
   useEffect(() => {
+    if (!isStudent) {
+      setStudents([]);
+      return;
+    }
     let active = true;
     const loadStudents = async () => {
       try {
@@ -291,7 +295,7 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
       active = false;
       window.clearTimeout(timer);
     };
-  }, [resolveToken, studentSearch]);
+  }, [isStudent, resolveToken, studentSearch]);
 
   const selectedConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedId) ?? null,
@@ -644,7 +648,8 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
               ))}
             </div>
 
-            <div className="border-t border-cream-200 p-3">
+            {isStudent && (
+              <div className="border-t border-cream-200 p-3">
                 <label className="relative block">
                   <Search
                     size={15}
@@ -653,8 +658,8 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
                   <input
                     value={studentSearch}
                     onChange={(event) => setStudentSearch(event.target.value)}
-                    placeholder={isStudent ? "Find a student" : "Start a chat with a student"}
-                    aria-label={isStudent ? "Find a student to chat with" : "Find a student to message"}
+                    placeholder="Find a student"
+                    aria-label="Find a student to chat with"
                     className="h-11 w-full rounded-xl border border-cream-300 bg-white pl-9 pr-3 text-sm text-ink"
                   />
                 </label>
@@ -687,7 +692,8 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
                     )}
                   </div>
                 )}
-            </div>
+              </div>
+            )}
           </div>
         </aside>
 

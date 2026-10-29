@@ -15,8 +15,17 @@ from app.db.session import get_db
 from app.repositories.course_repository import CourseRepository
 from app.schemas.result import ResultResponse
 from app.schemas.task import TeacherTaskCourseOption, TeacherTaskStudentOption
+from app.schemas.course import CourseCreate, CourseResponse
+from app.services.course_service import CourseService
 
 router = APIRouter(prefix="/teacher", tags=["Teacher"], dependencies=[Depends(require_role([UserRole.TEACHER, UserRole.ADMIN]))])
+
+
+@router.post("/courses", response_model=CourseResponse, status_code=status.HTTP_201_CREATED)
+async def create_teacher_course(data: CourseCreate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if current_user.role != UserRole.TEACHER:
+        raise HTTPException(status_code=403, detail="Only teachers can create courses here")
+    return await CourseService(db).create_course(data, current_user)
 
 
 @router.get("/dashboard")

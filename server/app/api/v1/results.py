@@ -1,14 +1,16 @@
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.core.deps import get_current_user
+from app.db.models.course import Course, CourseTeacher
 from app.db.models.exam import AttemptAnswer, Exam, Question, QuestionOption
 from app.db.models.result import Result
 from app.db.models.user import User, UserRole
 from app.db.session import get_db
+from app.repositories.course_repository import CourseRepository
 from app.repositories.result_repository import ResultRepository
 from app.schemas.result import PerQuestionReview, ResultDetailResponse, ResultResponse
 from app.services.exam_service import ExamService
@@ -24,6 +26,17 @@ async def list_results(
     repo = ResultRepository(db)
     if current_user.role == UserRole.STUDENT:
         results, _ = await repo.list_results(student_id=current_user.id)
+    elif current_user.role == UserRole.TEACHER:
+        courses_stmt = select(Course.id).where(
+            or_(
+                Course.teacher_id == current_user.id,
+                Course.teacher_assignments.any(
+                    CourseTeacher.teacher_id == current_user.id
+                ),
+            )
+        )
+        course_ids = list((await db.scalars(courses_stmt)).all())
+        results, _ = await repo.list_results(course_ids=course_ids)
     else:
         results, _ = await repo.list_results()
     return results
@@ -43,6 +56,12 @@ async def get_result_detail(
     # Ownership check
     if current_user.role == UserRole.STUDENT and result.student_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    if current_user.role == UserRole.TEACHER and not await CourseRepository(
+        db
+    ).is_teacher_assigned(result.exam.course_id, current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Result not found"
+        )
 
     reviews = []
     if result.exam.show_review:

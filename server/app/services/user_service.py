@@ -22,6 +22,7 @@ from app.repositories.audit_repository import AuditRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.user import AdminUserAcademicUpdate, UserUpdate, VirtualIDCardResponse
 from app.services.ranking_service import RankingService
+from app.services.storage_service import StorageService
 
 
 class UserService:
@@ -243,22 +244,25 @@ class UserService:
         return await self.user_repo.update(target_user)
 
     async def delete_account(self, user_id: uuid.UUID, admin: User) -> None:
-        if admin.role != UserRole.ADMIN:
+        is_self_service = admin.id == user_id
+        if admin.role != UserRole.ADMIN and not is_self_service:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only admins can delete user accounts.",
+                detail="You can only delete your own account.",
             )
-        if user_id == admin.id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="You cannot delete your own administrator account.",
-            )
-
         target_user = await self.user_repo.get_by_id(user_id)
         if target_user is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="User not found."
             )
+        files_to_delete = {
+            file_path
+            for file_path in (
+                target_user.avatar_url,
+                target_user.student_profile.photo_path if target_user.student_profile else None,
+            )
+            if file_path and not file_path.startswith(("http://", "https://"))
+        }
         if target_user.role == UserRole.ADMIN and target_user.status == UserStatus.ACTIVE:
             active_admins = await self.db.scalar(
                 select(func.count(User.id)).where(
@@ -321,11 +325,11 @@ class UserService:
 
         self.db.add(
             AuditLog(
-                actor_id=admin.id,
+                actor_id=None if is_self_service else admin.id,
                 action="user.deleted",
                 entity_type="user",
-                entity_id=str(target_user.id),
-                metadata_={
+                entity_id=None if is_self_service else str(target_user.id),
+                metadata_={"self_service": True} if is_self_service else {
                     "email": target_user.email,
                     "full_name": target_user.full_name,
                     "role": target_user.role.value,
@@ -339,3 +343,9 @@ class UserService:
             await self.db.rollback()
             logger.exception("Database account deletion failed for user %s", user_id)
             raise
+        for file_path in files_to_delete:
+            try:
+                await StorageService.delete_file(file_path)
+            except Exception:
+                # Keep the account deletion complete, but surface the orphaned object for cleanup.
+                logger.exception("Could not remove profile object after account deletion")

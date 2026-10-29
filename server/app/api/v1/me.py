@@ -56,6 +56,15 @@ async def update_my_profile(
     return await service.update_profile(current_user, data)
 
 
+@router.delete("", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_my_account(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await UserService(db).delete_account(current_user.id, current_user)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("/photo", response_model=UserResponse)
 async def upload_profile_photo(
     file: UploadFile = File(...),

@@ -1,5 +1,6 @@
+import uuid
 from typing import Any, Dict, List
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -192,6 +193,29 @@ async def get_student_courses(
 ):
     course_repo = CourseRepository(db)
     return await course_repo.list_student_enrollments(current_user.id)
+
+
+@router.get("/course-catalog")
+async def list_course_catalog(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    enrolled = select(Enrollment.course_id).where(Enrollment.student_id == current_user.id, Enrollment.status == EnrollmentStatus.ACTIVE)
+    rows = (await db.execute(select(Course).where(Course.is_published.is_(True)).order_by(Course.title))).scalars().all()
+    return [{"id": str(course.id), "code": course.code, "title": course.title, "description": course.description, "enrolled": course.id in set((await db.execute(enrolled)).scalars().all())} for course in rows]
+
+
+@router.post("/courses/{course_id}/enroll", status_code=status.HTTP_201_CREATED)
+async def enroll_in_course(course_id: uuid.UUID, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    course = await db.get(Course, course_id)
+    if not course or not course.is_published:
+        raise HTTPException(status_code=404, detail="Published course not found")
+    enrollment = await db.scalar(select(Enrollment).where(Enrollment.course_id == course_id, Enrollment.student_id == current_user.id))
+    if enrollment:
+        if enrollment.status == EnrollmentStatus.DROPPED:
+            enrollment.status = EnrollmentStatus.ACTIVE
+            await db.commit()
+        return {"message": "You are enrolled in this course"}
+    db.add(Enrollment(course_id=course_id, student_id=current_user.id, status=EnrollmentStatus.ACTIVE))
+    await db.commit()
+    return {"message": "You are enrolled in this course"}
 
 
 @router.get("/points", response_model=StudentPointsResponse)

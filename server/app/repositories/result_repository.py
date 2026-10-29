@@ -41,6 +41,7 @@ class ResultRepository:
         self,
         student_id: Optional[uuid.UUID] = None,
         exam_id: Optional[uuid.UUID] = None,
+        course_ids: Optional[List[uuid.UUID]] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> Tuple[List[Result], int]:
@@ -53,6 +54,10 @@ class ResultRepository:
         if exam_id:
             stmt = stmt.where(Result.exam_id == exam_id)
             count_stmt = count_stmt.where(Result.exam_id == exam_id)
+        if course_ids is not None:
+            allowed_exam_ids = select(Exam.id).where(Exam.course_id.in_(course_ids))
+            stmt = stmt.where(Result.exam_id.in_(allowed_exam_ids))
+            count_stmt = count_stmt.where(Result.exam_id.in_(allowed_exam_ids))
 
         total_res = await self.db.execute(count_stmt)
         total = total_res.scalar_one()

@@ -50,6 +50,7 @@ interface NavItem {
 const NAV: Record<Role, NavItem[]> = {
   student: [
     { href: "/student/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/student/courses", label: "Choose Courses", icon: BookOpen },
     { href: "/student/exams", label: "Exams", icon: FileText },
     { href: "/student/tasks", label: "My Tasks & Points", icon: ClipboardList },
     { href: "/student/results", label: "My Results", icon: FileCheck },
@@ -64,6 +65,7 @@ const NAV: Record<Role, NavItem[]> = {
   ],
   teacher: [
     { href: "/teacher/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/teacher/courses/new", label: "Create Course", icon: BookMarked },
     { href: "/teacher/exams", label: "Manage Exams", icon: FileText },
     { href: "/teacher/tasks", label: "Task Approvals", icon: ClipboardCheck },
     { href: "/planner", label: "Learn Planner", icon: CalendarDays },

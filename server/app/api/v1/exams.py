@@ -9,6 +9,8 @@ from app.db.models.course import Course, CourseTeacher, Enrollment, EnrollmentSt
 from app.db.models.exam import AttemptAnswer, AttemptStatus, Exam, ExamAttempt, ExamStatus, Question, QuestionOption
 from app.db.models.user import User, UserRole
 from app.db.session import get_db
+from app.repositories.course_repository import CourseRepository
+from app.repositories.exam_repository import ExamRepository
 from app.schemas.exam import (
     AutosaveAnswerRequest,
     AutosaveAnswerResponse,
@@ -119,6 +121,28 @@ async def get_exam_detail(
     exam = res.scalar_one_or_none()
     if not exam:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found")
+
+    if current_user.role == UserRole.STUDENT:
+        enrollment = await CourseRepository(db).get_enrollment(
+            current_user.id, exam.course_id
+        )
+        if not enrollment or enrollment.status != EnrollmentStatus.ACTIVE:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found"
+            )
+        reexam_approved = await ExamRepository(db).count_reexam_approvals(
+            exam.id, current_user.id
+        )
+        if exam.status != ExamStatus.PUBLISHED and not reexam_approved:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found"
+            )
+    elif current_user.role == UserRole.TEACHER and not await CourseRepository(
+        db
+    ).is_teacher_assigned(exam.course_id, current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found"
+        )
 
     # If student, do not show correct answers
     is_privileged = current_user.role in (UserRole.TEACHER, UserRole.ADMIN)
