@@ -107,6 +107,15 @@ Fill in your connection details:
 - `REDIS_URL`: Redis connection URL (`redis://localhost:6379/0` or Upstash)
 - `GEMINI_API_KEY`: Google Gemini API key for Aarsh Intelligence
 
+The database pool is per Uvicorn worker. Defaults are `DB_POOL_SIZE=3` and
+`DB_MAX_OVERFLOW=0`; with the Dockerfile's two workers, one API instance can
+open up to six application connections. Keep the sum across all app instances
+below the database/pooler's connection limit, leaving capacity for migrations,
+administrative connections, and other services. For a Supabase session pooler
+with a 15-client limit, do not set `DB_POOL_SIZE=15` per worker; a practical
+starting point is `DB_POOL_SIZE=3` and `DB_MAX_OVERFLOW=0`, then tune against
+observed concurrency and the number of workers/instances.
+
 ### 2. Supabase Migration
 
 #### New or Alembic-tracked database

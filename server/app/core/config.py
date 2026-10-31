@@ -45,8 +45,8 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/postgres"
-    DB_POOL_SIZE: int = 20
-    DB_MAX_OVERFLOW: int = 10
+    DB_POOL_SIZE: int = 3
+    DB_MAX_OVERFLOW: int = 0
     DB_ECHO: bool = False
 
     # Supabase
