@@ -1,20 +1,22 @@
 # architecture.md — SiliconBrains University System Architecture
 
-> Repository snapshot: this document reflects the current implementation in the `web/` and `server/` folders as of 2026-10-23.
+> Repository snapshot: this document reflects the current implementation in the `web/` and `server/` folders as of 2026-11-01.
 > It is intentionally aligned to the live stack, routes, and service layout in the codebase rather than a hypothetical future product.
 
 ## 1. Tech Stack
 | Layer | Technology |
 |---|---|
-| Frontend | Next.js (App Router, TypeScript), Tailwind CSS |
+| Frontend | Next.js 16 (App Router, TypeScript), Tailwind CSS 4 |
 | Auth | Clerk (`@clerk/nextjs`, backend JWT verification via JWKS) |
-| Backend | FastAPI, Python 3.13, Uvicorn/Gunicorn, Pydantic v2 |
+| Backend | FastAPI, Python 3.11+ per `server/pyproject.toml`, Uvicorn, Pydantic v2 |
 | DB | Supabase PostgreSQL (accessed by backend via SQLAlchemy 2 async + asyncpg) |
 | Storage | Supabase Storage (generated PDFs, profile photos) |
 | Cache / Realtime | Redis (cache, leaderboard sorted sets, rate limits, pub/sub) |
 | AI | Google Gemini API (`google-genai` SDK) |
 | PDF generation | ReportLab + `qrcode` (backend) |
 | Live classroom | Course-scoped FastAPI whiteboard sync; persisted strokes and short-lived chat |
+| Community Chat | Browser WebCrypto encryption for text/audio; device keys, key envelopes, and 10-hour inactive-conversation cleanup |
+| Mobile | Student-scoped Flutter Android client foundation; not feature-complete or production-ready |
 | Hosting (suggested) | Frontend: Vercel · Backend: Docker on Render/Railway/Fly · Redis: Upstash/Redis Cloud |
 
 ## 2. Overall Architecture
@@ -22,10 +24,10 @@
  Browser (Next.js + Tailwind)
    │  Clerk session (JWT)
    ▼
- Next.js middleware ── role gate (student/teacher/admin)
+ Next.js proxy ── authentication gate for protected routes
    │  fetch /api/v1/*  (Bearer JWT)
    ▼
- FastAPI (Python 3.13)
+ FastAPI (Python 3.11+ package requirement)
    ├── Auth dependency  → verify Clerk JWT (JWKS) → load user/role
    ├── RBAC dependency  → require_role(...)
    ├── Routers → Services → Repositories
@@ -37,7 +39,7 @@
 ```
 **Style:** modular monolith backend (one FastAPI app, domain modules). Simpler to build/deploy than microservices and sufficient for the target scale.
 
-**Key decision:** The browser **never talks to Supabase directly**. All data goes through FastAPI. Supabase RLS is enabled with no public policies as defense-in-depth.
+**Key decision:** The browser **never talks to Supabase directly**. Application data goes through FastAPI. Supabase RLS is configured in the SQL bootstrap as defense-in-depth; production database policies and roles still need deployment verification.
 
 ## 3. Application Flow
 ```
@@ -50,14 +52,14 @@ Landing → Sign in (Clerk) → role redirect
 ## 4. Authentication Flow
 ```
 1. User signs in with Clerk (frontend).
-2. Clerk issues session JWT containing role claim (via JWT template: { "role": "{{user.public_metadata.role}}" }).
+2. Clerk issues a signed session JWT.
 3. Frontend sends JWT in Authorization header (via getToken()).
 4. FastAPI verifies signature (JWKS, cached), `exp`, `azp`/issuer.
-5. FastAPI loads `users` row by clerk_user_id; checks status=active.
+5. FastAPI loads the `users` row by `clerk_user_id` and checks that the account is active; the database role is authoritative for existing users.
 6. RBAC dependency compares role with the endpoint requirement.
 7. Clerk webhook (Svix-signed) keeps `users` table in sync (create/update/delete).
 ```
-**Role change:** Admin calls `PATCH /admin/users/{id}/role` → backend updates DB **and** Clerk `publicMetadata.role` via Clerk Backend API → user's next token carries the new role.
+**Role change:** Admin calls `PATCH /admin/users/{id}/role` → backend updates Clerk metadata and the database; authorization on existing accounts uses the database role.
 
 ## 5. Authorization / Role Matrix
 | Capability | Student | Teacher | Admin |
@@ -76,19 +78,20 @@ Landing → Sign in (Clerk) → role redirect
 | User control / analytics / progress | ❌ | ❌ | ✅ |
 | Manage courses and teacher/student assignments | ❌ | ❌ | ✅ |
 | Manage a course whiteboard | ❌ | assigned courses | ✅ |
+| Use Community Chat | ✅ | ✅ | ✅ |
 
 Ownership checks (e.g., "student can only read own result") are enforced in the **service layer**, not only by role.
 
 ## 6. Admin Route Security (3 layers)
-1. **Frontend gate:** `middleware.ts` uses Clerk `auth()`; `/admin(.*)` requires `role === 'admin'`, else redirect `/403`.
-2. **Backend gate:** every `/api/v1/admin/*` router has `dependencies=[Depends(require_role("admin"))]`.
-3. **Audit:** all admin mutations written to `audit_logs`.
-Extra: stricter rate limit on admin routes; MFA enforced in Clerk for admin; no admin-only data in public/cached shared keys.
+1. **Frontend gate:** `src/proxy.ts` requires an authenticated session for protected role areas; it does not decide the authoritative role.
+2. **Backend gate:** admin API routers use `require_role("admin")`.
+3. **Audit:** sensitive admin mutations are recorded in `audit_logs`.
+Clerk MFA is a deployment/account configuration requirement, not something established by this repository.
 
 ## 7. Frontend Architecture
 - Next.js App Router, TypeScript, Server Components by default; Client Components only for interactivity (exam timer, chat, live ranking).
-- Data fetching: server components call API with server-side token; client components use SWR/React Query via a typed `apiClient`.
-- Route groups: `(public)`, `(student)`, `(teacher)`, `(admin)`.
+- Data fetching: feature components use the shared API helper in `src/lib/api.ts`; no SWR or React Query dependency is declared.
+- Route groups: shared authenticated routes are under `(app)`; role-specific pages are directories within that group, with public routes alongside it.
 - PDF download: client calls API with Bearer token → receives Blob → triggers browser download (`URL.createObjectURL`). No PDF logic in the frontend.
 - Live ranking: `EventSource` (SSE) with polling fallback.
 
@@ -191,51 +194,21 @@ server/
 │  ├─ db/
 │  │  ├─ base.py
 │  │  ├─ session.py
-│  │  └─ models/
+│  │  └─ models/              # SQLAlchemy models, including community chat
 │  ├─ repositories/
 │  ├─ schemas/
 │  ├─ services/
 │  └─ tests/
-├─ migrations/
-├─ scripts/
-├─ storage_local/
-└─ .venv/
-```rvice.py│  ├─ certificate_service.py
-│  ├─ task_service.py        # tasks, completions, automatic point awarding
-│  ├─ ranking_service.py     # Redis leaderboard built from Task Points
-│  ├─ notice_service.py
-│  ├─ analytics_service.py
-│  ├─ ai_service.py          # Gemini
-│  └─ pdf_service.py         # ReportLab result & certificate PDFs
-├─ api/v1/
-│  ├─ router.py
-│  ├─ auth_webhooks.py
-│  ├─ me.py
-│  ├─ student.py
-│  ├─ teacher.py
-│  ├─ exams.py
-│  ├─ results.py
-│  ├─ certificates.py
-│  ├─ tasks.py
-│  ├─ ranking.py
-│  ├─ notices.py
-│  ├─ assistant.py
-│  ├─ admin/{users,progress,analytics,notices}.py
-│  └─ public.py              # verify, public stats
-├─ templates/pdf/            # fonts, logo, certificate background
-└─ tests/
-alembic/  (migrations)
-requirements.txt / pyproject.toml
-Dockerfile
-.env.example
+├─ migrations/               # Alembic revisions
+├─ Dockerfile
+├─ docker-compose.yml
+├─ requirements.txt
+└─ pyproject.toml
 ```
 
 ## 9. API Architecture
-- Base: `/api/v1`. JSON. Pydantic validation. Consistent error shape:
-```json
-{ "error": { "code": "FORBIDDEN", "message": "Admin access required", "details": null } }
-```
-- Pagination: `?page=1&page_size=20`. Sorting: `?sort=-created_at`.
+- Base: `/api/v1`. JSON with Pydantic validation. HTTP error responses follow the implemented FastAPI/application handlers; this snapshot does not establish one uniform error envelope.
+- List endpoints use route-specific query parameters; pagination is not universal.
 
 ### Endpoint Structure
 **Public**
@@ -293,7 +266,12 @@ Dockerfile
 **Live classroom**
 - Course-scoped live whiteboard session endpoints are grouped under `/whiteboard`; only assigned teachers/admins can control a session, and enrolled students must join before viewing or chatting.
 
-## 14. Current implementation notes (2026-10-23)
+**Community Chat**
+- `/community-chat` provides conversation lists, direct/staff support initiation, device registration, public-key listing, wrapped-key envelope exchange, encrypted text/audio messages, and authenticated audio retrieval.
+- Text and voice payloads are encrypted in the browser with WebCrypto AES-GCM keys. Device identities use RSA-OAEP; the server stores public keys and per-device wrapped-key envelopes, not private keys or plaintext.
+- Device/private and conversation keys persist in IndexedDB with no app TTL. Conversation/message database rows and key envelopes are removed after 10 hours without a new message. The expiry job does not delete separately stored audio objects; their retention must be managed separately.
+
+## 14. Current implementation notes (2026-11-01)
 - Admin course management supports create, edit, permanent delete, multiple assigned teachers, selected student enrollment, and enroll-all-active-students.
 - Course-teacher membership is stored in `course_teachers`; `courses.teacher_id` remains the primary-teacher compatibility field.
 - Account deletion is permanent in both Clerk and the application database. It requires `CLERK_SECRET_KEY`; assigned teachers, the signed-in administrator, and the last active administrator are protected by service-layer checks.
@@ -301,6 +279,7 @@ Dockerfile
 - Live whiteboard messages expire after ten minutes; stored strokes remain with the session history. Chat polling on the web client is every five seconds; focus/visibility refreshes remain available for more immediate updates.
 - Student dashboard task completion statuses are fetched in one batched query for the selected tasks.
 - The AI orb animation is shared by the assistant page, floating launcher, and floating panel. Its black canvas is screen-blended into the UI; the site favicon is `web/src/app/icon.svg`.
+- Community Chat uses browser WebCrypto and IndexedDB-retained keys without an application TTL; conversation/message database rows and server key envelopes are removed after 10 hours without a new message. Stored audio objects are outside that database cleanup.
 
 ## 10. Data Flow Diagrams
 ### Task completion → Task Points → Live Ranking
@@ -348,14 +327,13 @@ Frontend ► POST /assistant/chat
 ## 11. Caching Strategy (Redis)
 | Key | Purpose | TTL |
 |---|---|---|
-| `lb:overall`, `lb:course:{id}` | Leaderboard sorted sets (score = Task Points + tie-break fraction) | none (rebuilt from `task_completions` if missing; nightly reconcile) |
-| `cache:notices:{audience}` | Notice lists | 60 s, invalidated on write |
+| `lb:overall`, `lb:course:{id}` | Leaderboard sorted sets (score = Task Points + tie-break fraction) | no TTL; overall scores rebuild from `task_completions` at startup and refresh on score-changing events; reads fall back to SQL when empty |
 | `cache:public:stats` | Landing stats | 5 min |
-| `cache:admin:analytics:*` | Analytics aggregates | 30–60 s |
+| `cache:admin:analytics:overview` | Admin overview aggregate | 45 s |
 | `rl:{route}:{user_id}` | Rate limiting | window |
 | `jwks:clerk` | Clerk JWKS | 1 h |
-| `chat:ctx:{user_id}` | Short chat context | 30 min |
-Pub/Sub channels: `lb:updates`, `analytics:updates`.
+Notice writes invalidate legacy notice-cache keys; current notice-list caching is not confirmed in code.
+Redis Pub/Sub channel: `lb:updates`. Admin analytics exposes an SSE stream that refreshes its overview every 5 s.
 
 ## 12. External Services
 Clerk, Supabase (Postgres + Storage), Redis provider, Google Gemini.
@@ -370,7 +348,7 @@ Clerk, Supabase (Postgres + Storage), Redis provider, Google Gemini.
 | 5 | SSE (not WebSocket) for live data | One-way updates, simpler, works over HTTP |
 | 6 | ReportLab for PDFs | Pure Python, no system deps, stable on 3.13 |
 | 7 | Generated PDFs cached in Supabase Storage | Avoid re-render; certificates are immutable |
-| 8 | Role in Clerk metadata + DB mirror | Fast gate in middleware, authoritative checks in API |
+| 8 | Clerk metadata synced to a database role | Frontend checks session authentication; the database role is authoritative in the app/API |
 | 9 | Gemini model name via env var | Models change; avoid hardcoding |
 | 10 | Alembic migrations | Versioned schema |
 | 11 | Points awarded in the **same DB transaction** as completion, unique per (task, student) | Atomic and idempotent — no double points |

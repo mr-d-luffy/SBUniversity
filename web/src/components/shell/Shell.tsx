@@ -19,12 +19,14 @@ import {
   LogOut,
   Megaphone,
   Menu,
+  Moon,
   PanelLeftClose,
   PanelLeftOpen,
   MessagesSquare,
   Presentation,
   Sparkles,
   ShieldCheck,
+  Sun,
   Trophy,
   Users,
   X,
@@ -93,8 +95,16 @@ const NAV: Record<Role, NavItem[]> = {
 export function Shell({ role, name, demo, children }: { role: Role; name: string; demo: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [isDark, setIsDark] = useState(false);
   const path = usePathname();
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const savedTheme = window.localStorage.getItem("sbu-theme");
+    const darkModeEnabled = savedTheme === "dark";
+    document.documentElement.classList.toggle("dark", darkModeEnabled);
+    setIsDark(darkModeEnabled);
+  }, []);
 
   useEffect(() => {
     setOpen(false);
@@ -126,6 +136,7 @@ export function Shell({ role, name, demo, children }: { role: Role; name: string
           <Link
             key={href}
             href={href}
+            aria-label={label}
             aria-current={active ? "page" : undefined}
             title={collapsed ? label : undefined}
             className={clsx(
@@ -166,18 +177,20 @@ export function Shell({ role, name, demo, children }: { role: Role; name: string
           href={process.env.NEXT_PUBLIC_DISCORD_INVITE_URL}
           target="_blank"
           rel="noopener noreferrer"
+          aria-label="Join Discord"
           title={collapsed ? "Join Discord" : undefined}
           className={clsx(
             "group flex h-11 items-center rounded-lg text-sm text-cream-100/90 transition-all duration-150 hover:bg-green-600 hover:text-cream-50",
             collapsed ? "justify-center px-0" : "gap-3 px-3.5"
           )}
         >
-          <MessagesSquare
-            size={19}
-            strokeWidth={1.75}
-            className="text-cream-200/90 transition-transform duration-150 group-hover:scale-110 group-hover:text-cream-100"
-            aria-hidden
-          />
+          <svg
+            viewBox="0 0 24 24"
+            className="h-[19px] w-[19px] shrink-0 fill-current text-cream-200/90 transition-transform duration-150 group-hover:scale-110 group-hover:text-cream-100"
+            aria-hidden="true"
+          >
+            <path d="M20.317 4.3698a19.7913 19.7913 0 0 0-4.8851-1.5152.0741.0741 0 0 0-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.393-.4063-.8742-.6264-1.2495a.077.077 0 0 0-.0785-.037A19.7363 19.7363 0 0 0 3.667 4.3698a.07.07 0 0 0-.0321.0277C.5334 9.0468-.319 13.5799.0992 18.0578a.0824.0824 0 0 0 .0312.0561 19.9 19.9 0 0 0 5.993 3.03.0781.0781 0 0 0 .0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 0 0-.0416-.1057 13.131 13.131 0 0 1-1.872-.8926.077.077 0 0 1-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 0 1 .0776-.0103c3.9278 1.7933 8.18 1.7933 12.0614 0a.074.074 0 0 1 .0785.0095c.1202.0991.246.1971.3728.2914a.077.077 0 0 1-.0066.1277 12.298 12.298 0 0 1-1.873.8916.0766.0766 0 0 0-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.077.077 0 0 0 .0842.0286 19.876 19.876 0 0 0 6.002-3.03.077.077 0 0 0 .0312-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 0 0-.0312-.0286ZM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3334.9555-2.4296 2.1569-2.4296s2.1758 1.0962 2.1569 2.4296c.0094 1.3333-.9555 2.419-2.1569 2.419Zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3334.9554-2.4296 2.1569-2.4296 1.2014 0 2.1758 1.0962 2.1569 2.4296 0 1.3333-.9555 2.419-2.1569 2.419Z" />
+          </svg>
           <span className={clsx("truncate", collapsed && "lg:hidden")}>Join Discord</span>
         </a>
       )}
@@ -187,11 +200,28 @@ export function Shell({ role, name, demo, children }: { role: Role; name: string
   return (
     <ToastProvider>
       <ActivityTracker role={role} />
-      <div className={clsx("min-h-dvh bg-cream-50 transition-[padding] duration-200", collapsed ? "lg:pl-16" : "lg:pl-64")}>
+      <div className={clsx("min-h-dvh bg-cream-50 transition-[padding] duration-200", collapsed ? "lg:pl-20" : "lg:pl-72")}>
         {/* Deep Green Heritage Sidebar (30% secondary brand structure) */}
         <aside
+          onMouseEnter={() => {
+            if (window.matchMedia("(min-width: 1024px)").matches) setCollapsed(false);
+          }}
+          onMouseLeave={() => {
+            if (window.matchMedia("(min-width: 1024px)").matches) setCollapsed(true);
+          }}
+          onFocusCapture={() => {
+            if (window.matchMedia("(min-width: 1024px)").matches) setCollapsed(false);
+          }}
+          onBlurCapture={(event) => {
+            if (
+              window.matchMedia("(min-width: 1024px)").matches &&
+              !(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))
+            ) {
+              setCollapsed(true);
+            }
+          }}
           className={clsx(
-            "fixed inset-y-0 left-0 z-40 flex w-[min(18rem,calc(100vw-2.5rem))] flex-col bg-green-700 pb-[env(safe-area-inset-bottom)] text-cream-100 shadow-lg transition-[transform,width] duration-200 lg:translate-x-0",
+            "fixed inset-y-3 left-3 z-40 flex w-[min(18rem,calc(100vw-2.5rem))] flex-col rounded-3xl border border-cream-200/20 bg-green-700 pb-[env(safe-area-inset-bottom)] text-cream-100 shadow-xl transition-[transform,width] duration-200 lg:translate-x-0",
             collapsed ? "lg:w-16" : "lg:w-64",
             open ? "translate-x-0" : "-translate-x-full"
           )}
@@ -281,6 +311,22 @@ export function Shell({ role, name, demo, children }: { role: Role; name: string
 
           <div className="min-w-0 flex-1" />
 
+          <button
+            type="button"
+            onClick={() => {
+              const nextTheme = !isDark;
+              window.localStorage.setItem("sbu-theme", nextTheme ? "dark" : "light");
+              document.documentElement.classList.toggle("dark", nextTheme);
+              setIsDark(nextTheme);
+            }}
+            aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            aria-pressed={isDark}
+            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-cream-300 bg-cream-50 text-green-700 transition-colors hover:bg-cream-100"
+          >
+            {isDark ? <Sun size={18} aria-hidden /> : <Moon size={18} aria-hidden />}
+          </button>
+
           {/* AI Shortcut button */}
           <Link
             href="/assistant"
@@ -311,7 +357,7 @@ export function Shell({ role, name, demo, children }: { role: Role; name: string
         </header>
 
         {/* Main Content Area */}
-        <main className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
+        <main className={clsx("mx-auto w-full px-3 py-5 sm:px-6 sm:py-8", path === "/planner" || path === "/community-chat" ? "max-w-[1440px]" : "max-w-6xl")}>
           <div key={path} className="page-enter">
             {children}
           </div>

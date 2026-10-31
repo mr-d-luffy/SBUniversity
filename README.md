@@ -7,6 +7,7 @@ SiliconBrains University is a role-based learning platform with student, teacher
 - Student and teacher dashboards, course enrollment, exams, results, certificates, and tasks with Task Points.
 - Live Task Points ranking, notices, analytics, and an AI study assistant named Aarsh Intelligence.
 - Course-scoped live whiteboards with teacher controls, student participation, and expiring classroom chat.
+- Community Chat with browser-side end-to-end encryption for text and voice messages. Device and conversation keys are retained locally without a TTL; conversation/message database history and key envelopes are removed after 10 hours of inactivity. Separately stored audio objects are not removed by that database cleanup. See [the security policy](./Docs/SECURITY_AND_ACCESS_CONTROL.md#community-chat-encryption).
 - Admin controls for users, course creation and editing, teacher/student course assignments, and account deletion.
 - Clerk authentication, backend role/ownership checks, and database audit records for administrative actions.
 
@@ -21,7 +22,7 @@ SiliconBrains University is a role-based learning platform with student, teacher
 
 1. Configure `web/.env.local` from [`web/.env.example`](./web/.env.example) and `server/.env` from [`server/.env.example`](./server/.env.example). Keep all secrets out of source control.
    Set `NEXT_PUBLIC_SITE_URL` to the production website origin so canonical URLs and `sitemap.xml` use the correct domain.
-2. Apply database migrations from `server/` with `alembic upgrade head`. The Supabase SQL bootstrap/update is in [`server/supabase_migration.sql`](./server/supabase_migration.sql).
+2. Apply database migrations from `server/` with `alembic upgrade head` (current repository head: `019_community_chat_e2ee`). Prefer Alembic for new and tracked databases; [`server/supabase_migration.sql`](./server/supabase_migration.sql) is a legacy manual bootstrap that does not include every current revision.
 3. Start the API from the repository root with `./scripts/run-local-backend.sh`.
 4. Start the frontend from `web/` with `npm install` then `npm run dev`.
 

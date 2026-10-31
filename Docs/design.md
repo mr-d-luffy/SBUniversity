@@ -1,9 +1,11 @@
 # design.md — SiliconBrains University Design System
 
-> v0.2 — Palette updated to **Bordo · Green · Cream** with the **60 : 30 : 10** rule. Source palette: BORDO `#6C151E`, GREEN `#0F3D3A`, CREAM `#F5DABF`. White is added only as a neutral surface. This document reflects the current `web/src/app` and component styling as of 2026-10-23.
+> v0.2 — Palette updated to **Bordo · Green · Cream** with the **60 : 30 : 10** rule. Source palette: BORDO `#6C151E`, GREEN `#0F3D3A`, CREAM `#F5DABF`. White is a neutral surface in light mode. This document reflects the current `web/src/app` and component styling as of 2026-11-01.
 
 ## 1. Design Philosophy
 Warm, academic, and prestigious — like a heritage university with a modern interface. Cream gives a calm, paper-like reading surface; deep green gives structure and trust; bordo is used sparingly as the single "action and achievement" color. Dashboards prioritize clarity; the exam screen prioritizes focus. Consistency over novelty: use only the tokens defined here.
+
+The 60:30:10 guidance describes the light palette. The app also supports a dark theme by remapping the same Tailwind color tokens in `web/src/app/globals.css`; the dark theme does not preserve the light palette's visible-area ratio.
 
 ### Aarsh Intelligence animation
 The animated AI orb is used consistently in the assistant page, floating launcher, and floating chat panel. Preserve the animation's transparent-looking appearance by screen-blending its black canvas into the UI rather than adding a black tile or circular background. Keep it sized to the available control space and provide accessible text/labels on the interactive controls. The site favicon is the graduation-cap `web/src/app/icon.svg`.
@@ -76,20 +78,17 @@ Rank #4 uses `green-700`. Danger is intentionally a **brighter red than bordo** 
 ### 3.3 Chart palette (admin analytics)
 Series 1 `green-700` · Series 2 `bordo-700` · Series 3 `green-500` · Series 4 `cream-400` · Series 5 `bordo-500`. Gridlines `cream-300`. Always add labels/patterns — never rely on color alone.
 
-### 3.4 Tailwind config (reference)
-```ts
-// tailwind.config.ts → theme.extend.colors
-colors: {
-  cream:  { 50:'#FDF6EE', 100:'#FAE9D6', 200:'#F5DABF', 300:'#E8C39C', 400:'#D4A574' },
-  green:  { 50:'#ECF4F3', 100:'#CFE3E1', 500:'#2F7F78', 600:'#17524E', 700:'#0F3D3A', 900:'#092A28' },
-  bordo:  { 50:'#FBEFEF', 100:'#F3D6D8', 500:'#9A2A36', 700:'#6C151E', 900:'#4F0F16' },
-  ink:    { DEFAULT:'#092A28', muted:'#4B5F5D', placeholder:'#5F7270' },
-  success:'#2F855A', warning:'#B7791F', danger:'#C62828',
-  rank:   { gold:'#C9A227', silver:'#9CA3AF', bronze:'#A8672D' },
+### 3.4 Tailwind CSS v4 tokens (current implementation)
+The palette is declared with `@theme` custom properties in `web/src/app/globals.css`, not in a `tailwind.config.ts` file. Example:
+```css
+@theme {
+  --color-cream-50: #FDF6EE;
+  --color-green-700: #0F3D3A;
+  --color-bordo-700: #6C151E;
+  --color-ink: #092A28;
 }
-// Semantic aliases (use these in components, not raw scales):
-// bg-page = cream-50 · bg-surface = white · bg-brand = green-700 · bg-cta = bordo-700
 ```
+Use the corresponding Tailwind utilities in components. The same custom properties are remapped under `html.dark` for the dark theme.
 
 ### 3.5 Contrast reference (WCAG, approximate)
 | Pair | Ratio | Verdict |

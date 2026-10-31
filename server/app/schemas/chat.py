@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime
 from typing import List, Optional
+
 from pydantic import BaseModel, ConfigDict, Field
+
 from app.db.models.chat import ChatRole, CommunityConversationKind
 from app.db.models.user import UserRole
 
@@ -31,7 +33,31 @@ class ChatSessionResponse(BaseModel):
 
 
 class CommunityMessageCreate(BaseModel):
-    content: str = Field(min_length=1, max_length=4000)
+    content: str = Field(min_length=1, max_length=16384, pattern=r"^e2ee:v1:")
+
+
+class CommunityChatDeviceRegister(BaseModel):
+    device_id: uuid.UUID
+    public_key: str = Field(min_length=64, max_length=4096, pattern=r"^[A-Za-z0-9+/=]+$")
+
+
+class CommunityChatDeviceResponse(BaseModel):
+    device_id: uuid.UUID
+    user_id: uuid.UUID
+    public_key: str
+
+
+class CommunityKeyEnvelopeCreate(BaseModel):
+    key_id: uuid.UUID
+    device_id: uuid.UUID
+    wrapped_key: str = Field(min_length=32, max_length=4096, pattern=r"^[A-Za-z0-9+/=_-]+$")
+
+
+class CommunityKeyEnvelopeResponse(BaseModel):
+    key_id: uuid.UUID
+    device_id: uuid.UUID
+    wrapped_key: str
+    created_at: datetime
 
 
 class CommunityMessageResponse(BaseModel):

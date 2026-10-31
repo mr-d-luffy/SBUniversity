@@ -5,15 +5,17 @@
 
 | Field | Value |
 |---|---|
-| Project name | `<PROJECT_NAME>` |
-| Data Fiduciary (legal entity) | `<COMPANY_LEGAL_NAME>` |
+| Project name | SiliconBrains University |
+| Data Fiduciary (legal entity) | Not identified in this repository; confirm with the project owner |
 | Document owner | `<NAME / ROLE>` |
 | Data Protection Officer / Grievance Officer | `<NAME, EMAIL, PHONE>` |
 | Version | 1.0 |
-| Last reviewed | `<YYYY-MM-DD>` |
+| Last reviewed | 2026-11-01 |
 | Next review | Every 6 months, or on any major feature / vendor change |
 
 > **Disclaimer:** This is an engineering and compliance checklist, not legal advice. Have a qualified Indian data-protection lawyer review the final policies, notices, and contracts before launch.
+
+> **Repository note:** This checklist is not evidence of legal compliance or production configuration. The project-specific inventory is in [`data_map.md`](data_map.md); owner, lawful basis, hosting regions, vendor contracts, backups, and formal retention decisions remain to be confirmed.
 
 ---
 
@@ -73,13 +75,15 @@ Personal data includes: name, phone, email, address, IP address, device ID, adve
 
 ## 4. Data Inventory & Mapping (Do This First)
 
-Maintain a living register (spreadsheet or table in repo `/docs/data-map`).
+Maintain a living register in [`data_map.md`](data_map.md) and update it when data flows change.
 
 | Data field | Source (form/SDK/API) | Purpose | Lawful basis (consent / legitimate use) | Storage location & region | Processor(s) with access | Retention | Deletion method |
 |---|---|---|---|---|---|---|---|
 | Email | Signup form | Account login, receipts | Consent | `<DB, region>` | `<Email vendor>` | Account life + 90 days | Hard delete + backups expiry |
 | Phone | Signup / OTP | Authentication | Consent | | `<SMS vendor>` | | |
-| Device ID / IP | App SDK / server logs | Fraud prevention, security | Legitimate use / consent | | | 12 months min log retention | |
+| Device ID / IP | Web client / API security request events | Security monitoring | Legal basis to be confirmed | Application database; hosting logs may also exist | Deployment-dependent | The API deletes `security_request_events` older than 30 days while running; verify provider logs/backups and applicable legal requirements separately | Database retention sweeper; external logs require provider configuration |
+| Community Chat text/audio and message metadata | Authenticated Community Chat | User communication | Legal basis and notice to be confirmed | Text/audio payloads are encrypted in the browser; ciphertext and metadata in the application database, encrypted audio objects in configured storage | Deployment-dependent | Conversation/message rows and server key envelopes are deleted 10 hours after the latest message; uploaded audio objects are not deleted by that database cleanup | Database expiry sweeper; object expiry/deletion needs separate configuration |
+| Community Chat device and conversation keys | WebCrypto / device enrollment | Decrypt Community Chat on registered browser devices | Legal basis and user disclosure to be confirmed | Private device and conversation keys in browser IndexedDB; device public keys and wrapped envelopes in the application database | Application database / browser storage | No application TTL for browser keys; envelopes are removed with the conversation, public keys with account deletion | Browser storage controls; server-side cascade for database records |
 | `<add rows>` | | | | | | | |
 
 **Rules**

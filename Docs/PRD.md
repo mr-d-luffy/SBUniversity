@@ -1,6 +1,6 @@
 # PRD.md — SiliconBrains University Product Requirements
 
-> Source of truth for WHAT we are building. Version 0.2 (repository-aligned snapshot). Assumptions are marked **[A#]** and listed in section 17. This file reflects the current implementation now present in the repository as of 2026-10-23.
+> Source of truth for WHAT we are building. Version 0.2 (repository-aligned snapshot). Assumptions are marked **[A#]** and listed in section 17. This file reflects the current repository snapshot as of 2026-11-01; it does not imply a verified production deployment.
 
 ## 1. Project Name
 **SiliconBrains University**
@@ -18,6 +18,7 @@ Institutions typically run exams, results, certificates, notices and student ide
 4. Live Top-4 ranking driven by **Task Points**, awarded automatically when tasks are completed.
 5. Admin control over users, courses, course teacher assignments, and student enrollments, plus visibility into progress and live analytics.
 6. Context-aware AI assistant (Aarsh Intelligence) powered by Google Gemini.
+7. Community Chat for student rooms, peer conversations, and staff support, with browser-side end-to-end encryption.
 
 ## 5. Target Users & Roles
 | Role | Who | Key powers |
@@ -41,6 +42,7 @@ Institutions typically run exams, results, certificates, notices and student ide
 12. Admin panel: User Control, Course Management, Progress Check, Live Analytics, Notice Control
 13. Tasks & Task Points (teacher-created tasks, points auto-awarded on completion)
 14. Course-scoped live whiteboard with teacher controls and enrolled-student participation
+15. Community Chat with encrypted text and voice messages
 
 ## 7. Functional Requirements
 ### 7.1 Authentication & Roles
@@ -131,6 +133,13 @@ Institutions typically run exams, results, certificates, notices and student ide
 - Teachers can draw, undo, and clear the board. Students have read-only canvas access.
 - Chat messages expire after ten minutes; whiteboard strokes remain with the session history.
 
+### 7.15 Community Chat and encryption
+- Community Chat provides a shared student room, student-to-student direct conversations, and role-specific staff support conversations.
+- The browser uses WebCrypto to encrypt text and recorded audio with AES-GCM conversation keys. Device identity keys use RSA-OAEP; the browser wraps each conversation key to registered participant-device public keys and stores the private device key and conversation keys in IndexedDB.
+- The API stores encrypted message bodies/audio, public device keys, encrypted key envelopes, and conversation metadata. It does not receive message plaintext or private keys. Encryption does not hide sender/recipient identity, timing, role, or other service metadata.
+- Browser-held device and conversation keys have no application TTL. Clearing browser storage or changing browser/device can make prior messages unreadable on that device; a device without a key needs a device that already has access to provide an envelope.
+- A conversation's expiry is reset on each new message. The backend removes expired conversation and message database rows, including their key envelopes, after 10 hours without a new message. Uploaded audio objects are stored separately and are not deleted by that database cleanup; their storage retention must be managed/verified separately.
+
 ## 8. Non-Functional Requirements
 | Area | Requirement |
 |---|---|
@@ -158,6 +167,7 @@ Institutions typically run exams, results, certificates, notices and student ide
 | `/ranking` | Live Top 4 | Auth |
 | `/notices` | Notice board | Auth |
 | `/assistant` | Aarsh Intelligence | Auth |
+| `/community-chat` | Encrypted community conversations | Auth |
 | `/teacher/dashboard` | Teacher dashboard | Teacher |
 | `/teacher/exams`, `/teacher/exams/new`, `/teacher/exams/[id]` | Manage exams | Teacher |
 | `/teacher/notices` | Teacher notices | Teacher |
@@ -181,10 +191,10 @@ Institutions typically run exams, results, certificates, notices and student ide
 
 ## 11. Authentication & Admin Security Requirements
 - Clerk is the only identity provider. Backend never stores passwords.
-- Three layers of admin protection: (1) Next.js middleware role gate, (2) FastAPI `require_role("admin")` dependency on every `/admin/*` endpoint, (3) audit logging of every admin write.
-- Role is read from the **verified JWT claim**, never from a client-sent field.
+- The frontend proxy requires an authenticated session for protected paths; it is not the authoritative role gate. The FastAPI API enforces `require_role("admin")`, and sensitive admin writes are audited.
+- The backend uses the database role for existing accounts after verifying the Clerk JWT; a client-supplied role is never an authorization grant.
 - Admin-only actions require re-checking DB `users.status = active`.
-- Optional hardening (recommended): require Clerk MFA for admin accounts. **[A5]**
+- Admin MFA is an external Clerk configuration requirement and is not verified by this repository. **[A5]**
 
 ## 12. API Requirements
 REST JSON under `/api/v1`. Auth via `Authorization: Bearer <Clerk JWT>`. PDFs returned as `application/pdf` streams. Full endpoint list in `architecture.md`.
@@ -199,14 +209,14 @@ Clerk (auth), Supabase PostgreSQL (+ Storage for generated PDFs and photos), Red
 Lesson/video content & lesson-based progress, weekly/monthly leaderboards, streaks/badges, auto-checked assignment types, descriptive/coding questions, proctoring, email notifications, ID card PDF/wallet download, multi-language, parent portal, payments.
 
 ## 16. Out of Scope (MVP)
-Payments, video lessons, live classes, proctoring/webcam, native mobile apps, email/SMS, multi-tenant (multiple universities), manual grading.
+Payments, video lessons/video conferencing, proctoring/webcam, email/SMS, multi-tenant (multiple universities), manual grading. The repository also contains a student-scoped Flutter Android client foundation; it is not feature-complete or production-ready (see [`mobile/README.md`](../mobile/README.md)).
 
 ## 17. Assumptions (please confirm or correct)
 - **[A1]** Teacher/Admin roles are granted only by Admin (no self-selection of role at signup).
 - **[A2]** No lesson content in MVP; course progress = % of the course's published exams passed. Certificate issued at 100%.
 - **[A3]** Live ranking = total **Task Points** (sum of points of completed, non-revoked tasks), all-time. Tie-break: whoever reached the total first. Exam marks do not affect rank.
 - **[A4]** Expected scale ≈ 5,000 users / 500 concurrent exam takers.
-- **[A5]** Admin MFA enforced through Clerk settings.
+- **[A5]** Admin MFA is expected to be configured through Clerk by the deployment owner; this repository does not verify or enforce that setting.
 - **[A6]** Python version is **3.13** (interpreted from "python13.3").
 - **[A7]** Exam format is MCQ single-answer in MVP.
 - **[A8]** Students are enrolled by Admin (or Teacher for own course); no self-enrollment in MVP.

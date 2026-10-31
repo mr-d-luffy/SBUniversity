@@ -5,25 +5,44 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Any
 from urllib.parse import parse_qs, urlsplit
+
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import delete, text
+
 from app.api.v1.router import api_v1_router
 from app.core.config import settings
 from app.core.logging import logger, setup_logging
 from app.core.redis import close_redis_client, get_redis_client
-from app.db.session import AsyncSessionLocal
 from app.db.models.security_event import SecurityRequestEvent
-from app.repositories.exam_repository import ExamRepository
+from app.db.session import AsyncSessionLocal
 from app.repositories.community_chat_repository import CommunityChatRepository
+from app.repositories.exam_repository import ExamRepository
+from app.repositories.whiteboard_repository import WhiteboardRepository
 from app.services.exam_service import ExamService
 from app.services.ranking_service import RankingService
-from app.repositories.whiteboard_repository import WhiteboardRepository
+
+_HIGH_FREQUENCY_GET_PATHS = (
+    re.compile(
+        r"^/api/v1/community-chat/conversations(?:/[^/]+/(?:messages|devices|keys))?$"
+    ),
+    re.compile(r"^/api/v1/whiteboard/courses/[^/]+/session$"),
+    re.compile(r"^/api/v1/whiteboard/sessions/[^/]+/messages$"),
+)
+
+
+def should_record_request_telemetry(method: str, path: str) -> bool:
+    if method != "GET" or not path.startswith("/api/v1/"):
+        return False
+    if path.startswith("/api/v1/admin/security"):
+        return False
+    if path in {"/api/v1/health", "/api/v1/health/"}:
+        return False
+    return not any(pattern.fullmatch(path) for pattern in _HIGH_FREQUENCY_GET_PATHS)
 
 
 async def periodic_expired_attempts_sweeper():
@@ -238,12 +257,7 @@ async def security_headers(request: Request, call_next):
         # Record API GET traffic only. Never persist query strings, bodies, cookies,
         # or credentials. Exclude the polling endpoint to prevent feed self-noise.
         path = request.url.path
-        if (
-            request.method == "GET"
-            and path.startswith("/api/v1/")
-            and not path.startswith("/api/v1/admin/security")
-            and path not in {"/api/v1/health", "/api/v1/health/"}
-        ):
+        if should_record_request_telemetry(request.method, path):
             safe_path = re.sub(r"/[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}", "/:id", path)
             safe_path = re.sub(r"/\d+(?=/|$)", "/:id", safe_path)[:240]
             host = request.client.host if request.client else None

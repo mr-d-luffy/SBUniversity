@@ -388,8 +388,8 @@ export function LearnPlanner({ role }: { role: Role }) {
   const completion = plans.length ? Math.round((completedPlans / plans.length) * 100) : 0;
 
   return (
-    <div className="overflow-hidden rounded-[2rem] border border-[#d9efec] bg-[#f7fbfa] shadow-[0_16px_60px_-32px_rgba(15,70,65,0.35)]">
-      <header className="flex flex-wrap items-center justify-between gap-4 bg-[#102f32] px-5 py-4 text-white sm:px-8">
+    <div className="min-h-[calc(95svh-2rem)] overflow-hidden rounded-[2rem] border border-[#d9efec] bg-[#f7fbfa] shadow-[0_16px_60px_-32px_rgba(15,70,65,0.35)] max-sm:min-h-[calc(95svh-8rem)]">
+      <header className="flex flex-wrap items-center justify-between gap-4 bg-[#102f32] px-6 py-5 text-white sm:px-10 sm:py-6">
         <div className="flex items-center gap-3">
           <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[#d9f6ec] text-[#1c5b4c]">
             <CalendarDays size={21} />
@@ -405,7 +405,7 @@ export function LearnPlanner({ role }: { role: Role }) {
         </div>
       </header>
 
-      <div className="grid gap-5 p-4 sm:p-6 xl:grid-cols-[minmax(0,1fr)_300px] xl:gap-6 xl:p-7">
+      <div className="grid gap-6 p-5 sm:p-7 xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-8 xl:p-9">
         <section className="min-w-0">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>

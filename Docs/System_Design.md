@@ -1,20 +1,21 @@
 # System_Design.md — SiliconBrains University (HLD + LLD)
 
 ## 1. Overview
-**Purpose:** SiliconBrains University is a role-based (Student/Teacher/Admin) learning platform for online exams, generated results and certificates, live ranking, notices, and an AI assistant (Aarsh Intelligence).
+**Purpose:** SiliconBrains University is a role-based (Student/Teacher/Admin) learning platform for online exams, generated results and certificates, live ranking, notices, Community Chat, and an AI assistant (Aarsh Intelligence).
 
 **Goals**
 - Secure, server-authoritative exam lifecycle (exam → result → certificate).
 - Verifiable PDFs generated in the backend and downloaded from the frontend.
 - Live Top-4 leaderboard driven by **Task Points** awarded automatically on task completion, plus admin live analytics.
 - Strong RBAC with hardened admin routes.
+- Community Chat encrypts text and audio in the browser and removes inactive conversation records after 10 hours.
 
-**Non-goals (MVP):** payments, video lessons, proctoring, email/SMS, multi-tenancy, native apps, descriptive/coding questions.
+**Non-goals (MVP):** payments, video lessons/video conferencing, proctoring, email/SMS, multi-tenancy, descriptive/coding questions. A student-scoped Flutter Android client foundation exists, but it is not feature-complete or production-ready.
 
 ## 2. Requirements
 ### Functional
 - Clerk auth with 3 roles; admin-controlled role assignment.
-- Landing, Student/Teacher dashboards, Virtual ID Card, Exam, Result, Certificate, Tasks & Task Points, Live Ranking, Notice Board, AI chat.
+- Landing, Student/Teacher dashboards, Virtual ID Card, Exam, Result, Certificate, Tasks & Task Points, Live Ranking, Notice Board, AI chat, Community Chat, planner, and live whiteboard.
 - Admin: user control, progress check, live analytics, notice control.
 - Result and certificate PDFs generated server-side.
 
@@ -26,11 +27,11 @@
 | Exam submit | p95 < 800 ms incl. grading |
 | Availability | 99.5% (MVP) |
 | Scalability | 5k users, 500 concurrent exam takers |
-| Security | JWT verified on every call, RBAC + ownership, rate limiting, audit |
+| Security | JWT verification on protected requests, RBAC + ownership, rate limiting, audit |
 | Data durability | Daily backups, PITR if available |
 
 ## 3. Assumptions & Constraints
-- Python 3.13 (from "python13.3"). MCQ single-answer exams. No lessons: progress = published exams passed. Ranking = total Task Points (fixed per task; exam tasks auto-complete on pass, assignment tasks need teacher approval; tie-break = earliest to reach total; exam marks do not affect rank).
+- Backend package metadata supports Python 3.11+ (`server/pyproject.toml`). MCQ single-answer exams. No lessons: progress = published exams passed. Ranking = total Task Points (fixed per task; exam tasks auto-complete on pass, assignment tasks need teacher approval; tie-break = earliest to reach total; exam marks do not affect rank).
 - Expected scale ≈ 5,000 users, ≈ 500 concurrent exam takers, < 50 req/s average, bursts ≈ 300 req/s at exam start/end. **(assumed)**
 - Budget-conscious: managed services (Vercel, Supabase, Upstash-type Redis, container PaaS).
 - Gemini API quota/latency are external constraints.
@@ -41,7 +42,7 @@
 
 ```mermaid
 flowchart LR
-  U[Browser<br/>Next.js + Tailwind] -->|Clerk session| MW[Next.js Middleware<br/>role gate]
+  U[Browser<br/>Next.js 16 + Tailwind 4] -->|Clerk session| MW[Next.js proxy<br/>authentication gate]
   MW --> U
   U -->|Bearer JWT| API[FastAPI API<br/>Python 3.13]
   API -->|verify JWT JWKS| CL[Clerk]
@@ -57,7 +58,7 @@ flowchart LR
 ## 5. Component Design
 | Component | Responsibility | Interfaces | Dependencies | Tech |
 |---|---|---|---|---|
-| Web App | UI, routing, role gate, PDF download, SSE client | REST/SSE to API; Clerk SDK | API, Clerk | Next.js, Tailwind |
+| Web App | UI, authentication gate, PDF download, SSE/polling clients | REST/SSE to API; Clerk SDK | API, Clerk | Next.js 16, Tailwind CSS 4 |
 | Auth module | JWT verify, `get_current_user`, `require_role`, webhook sync | `deps.py`, `/webhooks/clerk` | Clerk JWKS, DB, Redis (JWKS cache) | PyJWT, svix |
 | User service | Profiles, roles, status, ID card data | `/me`, `/admin/users` | DB, Clerk API | FastAPI, SQLAlchemy |
 | Course service | Courses, enrollments, progress, teacher assignments | `/student/courses`, `/admin/courses/*`, `/admin/enrollments` | DB | — |
@@ -66,12 +67,13 @@ flowchart LR
 | Result service | Results, review, PDF trigger | `/results` | DB, PDF svc, Storage | — |
 | PDF service | Render result & certificate PDFs, QR codes | internal `render_result_pdf`, `render_certificate_pdf` | Storage | ReportLab, qrcode |
 | Certificate service | Completion check, issue, revoke, verify | `/certificates`, `/public/verify/*` | DB, PDF svc | — |
-| Ranking service | Recompute student's Task Points → absolute ZADD, top-4, my rank, SSE broadcast, rebuild/reconcile | `/ranking/*` | Redis, DB (`task_completions`) | redis-py |
-| Notice service | Notice CRUD, audience filtering, cache | `/notices` | DB, Redis | — |
+| Ranking service | Recompute student's Task Points → absolute ZADD, top-4, my rank, SSE broadcast, startup rebuild | `/ranking/*` | Redis, DB (`task_completions`) | redis-py |
+| Notice service | Notice CRUD, audience filtering, legacy cache-key invalidation | `/notices` | DB, Redis | — |
 | AI service | Prompting, safety checks, Gemini streaming, history | `/assistant/*` | Gemini, DB, Redis | google-genai |
 | Analytics service | Aggregates for admin, SSE refresh | `/admin/analytics/*` | DB, Redis | — |
-| Audit service | Immutable admin action log | internal | DB | — |
+| Audit service | Record sensitive admin actions | internal | DB | — |
 | Whiteboard service | Course session lifecycle, stroke sync, undo/clear, join, expiring chat | `/whiteboard/*` | DB, active course membership | — |
+| Community Chat service | Conversations, device registration, encrypted message/audio persistence, key-envelope exchange, expiry | `/community-chat/*` | DB, object storage | WebCrypto in browser |
 
 ## 6. Data Design
 ### ER Diagram
@@ -101,6 +103,10 @@ erDiagram
   USERS ||--o{ NOTICES : authors
   USERS ||--o{ CHAT_SESSIONS : owns
   CHAT_SESSIONS ||--o{ CHAT_MESSAGES : contains
+  USERS ||--o{ COMMUNITY_CHAT_DEVICES : registers
+  COMMUNITY_CONVERSATIONS ||--o{ COMMUNITY_MESSAGES : contains
+  COMMUNITY_CONVERSATIONS ||--o{ COMMUNITY_CONVERSATION_KEY_ENVELOPES : stores
+  COMMUNITY_CHAT_DEVICES ||--o{ COMMUNITY_CONVERSATION_KEY_ENVELOPES : receives
   USERS ||--o{ AUDIT_LOGS : acts
   COURSES ||--o{ WHITEBOARD_SESSIONS : hosts
   WHITEBOARD_SESSIONS ||--o{ WHITEBOARD_STROKES : contains
@@ -110,9 +116,9 @@ erDiagram
 
 **Database choice:** PostgreSQL (Supabase) — relational integrity fits users/courses/exams/results; strong constraints, transactions for grading; managed backups.
 
-**Caching:** Redis — leaderboard ZSETs, notice lists (60 s), public stats (5 min), analytics (30–60 s), JWKS (1 h), rate limits.
+**Caching:** Redis — leaderboard ZSETs, public stats (5 min), admin overview analytics (45 s), Clerk JWKS (1 h), and rate-limit counters. Notice writes invalidate legacy cache keys; current notice-list caching is not confirmed in code.
 **Indexing:** FK indexes, `(exam_id, score DESC, time_taken_sec)`, partial index on in-progress attempts, `(student_id, status)` and `UNIQUE (task_id, student_id)` on task_completions, `(status, published_at DESC)` for notices.
-**Retention:** results/certificates retained indefinitely; chat messages 180 days (configurable); audit logs ≥ 1 year; expired notices archived; PDFs cached in Storage (regenerable except certificates, which are kept).
+**Retention:** the Community Chat sweeper deletes conversation/message database rows and key envelopes after 10 hours without a new message. Browser device and conversation keys have no application TTL. Uploaded encrypted audio objects are stored separately and are not deleted by the conversation cleanup. Do not treat other feature records or provider backups as having a common TTL; confirm their retention separately.
 
 ## 7. API Design
 Base `/api/v1`, JSON, `Authorization: Bearer <Clerk JWT>`. Versioned by path (`/v1`). Errors: `{ "error": { "code", "message", "details" } }`.
@@ -209,12 +215,16 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   actor Ad as Admin
-  participant MW as Next Middleware
+  participant MW as Next proxy
+  participant L as App layout
   participant A as FastAPI
   participant C as Clerk
   participant D as PostgreSQL
   Ad->>MW: open /admin/users
-  MW->>MW: role==admin? else 403
+  MW->>MW: authenticated? else redirect to sign-in
+  MW->>L: continue to app route
+  L->>D: load the signed-in user's database role
+  L-->>Ad: render admin page only for admin role
   Ad->>A: PATCH /admin/users/{id}/role (JWT)
   A->>A: verify JWT, require_role(admin), user active
   A->>C: update publicMetadata.role
@@ -278,8 +288,8 @@ Load balancing: platform LB over API replicas. Queues: not needed in MVP (FastAP
 | Timer expires with no submit | Lazy check on any request + periodic sweeper auto-submits (`auto_submitted`) |
 | Duplicate submit | Idempotent: second call returns existing result |
 | Points double-award | `UNIQUE (task_id, student_id)` + insert in the same TX; retries and extra attempts are no-ops |
-| Redis and DB out of sync | Scores are recomputed from DB and set absolutely on every event; rebuild on cold start; nightly reconcile |
-| Redis down | Fall back to DB query for top 4 (slower); rate limiting fails open for reads / closed for admin & chat; rebuild ZSET on recovery |
+| Redis and DB out of sync | Scores are recomputed from DB and set absolutely on score-changing events; rebuild overall scores at startup; SQL fallback when Redis is empty/unavailable |
+| Redis down | Leaderboard reads fall back to SQL when Redis is empty/unavailable; rate-limited production requests return service unavailable rather than bypassing limits |
 | Gemini down | Friendly error; app otherwise unaffected |
 | Clerk JWKS fetch fails | Use cached JWKS; deny if none |
 | Storage failure on PDF | Regenerate on demand; stream directly |
@@ -287,17 +297,17 @@ Retries: exponential backoff for Gemini/Storage (max 3). Backups: Supabase daily
 
 ## 11. Security
 - **Authn:** Clerk; JWT verified (signature via JWKS, `exp`, issuer, `azp`).
-- **Authz:** RBAC (`require_role`) + ownership checks; admin routes triple-gated (middleware, dependency, audit). Admin MFA via Clerk.
-- **Encryption:** TLS everywhere; DB/Storage encrypted at rest (Supabase); private buckets with signed URLs.
+- **Authz:** RBAC (`require_role`) + ownership checks; the frontend proxy authenticates protected paths, the API enforces admin roles, and sensitive writes are audited. Admin MFA is an external Clerk configuration requirement.
+- **Transport/storage encryption:** production deployment must use TLS and provider-managed database/object-storage encryption; confirm private-bucket and backup settings with the deployment owner.
 - **Secrets:** env/secret manager only; never `NEXT_PUBLIC_` for secrets.
 - **Threats & controls**
 | Threat | Control |
 |---|---|
-| Privilege escalation | Role from verified claim; admin-only role endpoint; audit logs |
+| Privilege escalation | Database-authoritative role for existing accounts; admin-only role endpoint; audit logs |
 | Exam cheating via API | Server timer, no answer leakage, attempt limits, shuffle |
 | IDOR on results/certs | Ownership checks in service layer |
 | Points tampering / self-awarding | Points computed server-side from `tasks.points`; assignment tasks need teacher approval; completions never deleted, only revoked + audited |
-| XSS in notices/chat | Sanitized markdown, CSP, no raw HTML |
+| XSS in notices/chat | Render untrusted content as text, avoid raw HTML, and apply CSP |
 | Prompt injection / data leak via AI | Own-data-only context, system prompt server-side, output not trusted for actions |
 | Brute force / abuse | Clerk protections, Redis rate limits |
 | Webhook forgery | Svix signature verification |
@@ -305,17 +315,19 @@ Retries: exponential backoff for Gemini/Storage (max 3). Backups: Supabase daily
 | Certificate forgery | Unique code + QR + public verify + revoke |
 
 ## 12. Infrastructure & Deployment
+The deployment choices below are examples, not evidence that these services are provisioned or the application is deployed.
 | Env | Web | API | DB | Redis | Clerk |
 |---|---|---|---|---|---|
 | Local | `next dev` | docker-compose | Supabase dev project | local Redis | dev instance |
 | Staging | Vercel preview | container PaaS | Supabase staging | managed Redis | dev instance |
 | Production | Vercel | container PaaS (2+ replicas) | Supabase prod | managed Redis | prod instance |
-- **CI/CD:** GitHub Actions — lint, tests, build; auto-deploy `develop`→staging, `main`→prod (manual approval); Alembic migrations run before API rollout.
-- **Containers:** API Dockerfile (python:3.13-slim, non-root, gunicorn+uvicorn workers).
+- **CI/CD:** no `.github/workflows/` directory is present in this checkout; CI checks, automatic deployments, and migration rollout automation are not established here.
+- **Containers:** API Dockerfile uses `python:3.13-slim`, runs as a non-root user, and starts Uvicorn with two workers.
 - **IaC:** optional Terraform later; MVP uses platform config files.
-- **Monitoring/logging:** Sentry (web + API), structured JSON logs, uptime checks on `/health`.
+- **Monitoring/logging:** configure monitoring, structured logs, and uptime checks for the deployment; no Sentry integration is established by the current package manifests.
 
 ## 13. Observability
+The following are proposed production metrics and alert targets, not evidence that monitoring or tracing is configured in this repository.
 - **Metrics:** request rate/latency/error by route, exam starts/submits, task completions and points awarded, leaderboard drift (Redis vs DB), autosave failures, PDF render time, Gemini latency/error rate, Redis hit ratio, active attempts, SSE connections.
 - **Logs:** structured with request ID, user ID (no PII/tokens), audit events.
 - **Traces:** OpenTelemetry on API (HTTP, DB, Redis, Gemini).
@@ -353,13 +365,13 @@ Retries: exponential backoff for Gemini/Storage (max 3). Backups: Supabase daily
 ## 16. Roadmap / Phases
 - **MVP:** Phases 1–12 in `phases.md` (auth, admin basics, exams, results, certificates, ranking, AI, analytics).
 - **Hardening:** testing, security review, optimization, deployment (Phases 13–15).
-- **Later:** lesson content & lesson-based progress, descriptive/coding questions, proctoring, email/push notifications, ID card PDF/wallet, dark mode, multilingual, parent portal.
+- **Later:** lesson content & lesson-based progress, descriptive/coding questions, proctoring, email/push notifications, ID card PDF/wallet, multilingual, parent portal. Dark mode is already present in the web styling.
 
 ## 17. Appendix
 **Glossary:** *Task Points* points awarded automatically when a task is completed, used for ranking · *RBAC* role-based access control · *JWKS* JSON Web Key Set · *SSE* Server-Sent Events · *ZSET* Redis sorted set · *RLS* Row Level Security · *PITR* point-in-time recovery · *Aarsh Intelligence* the platform's Gemini-powered assistant.
 **References:** Clerk docs (JWT templates, webhooks), FastAPI docs, Supabase docs (Postgres, Storage, RLS), Redis docs (sorted sets, pub/sub), Google Gemini API docs, ReportLab docs.
 
-## 18. Implementation update (2026-10-23)
+## 18. Implementation update (2026-11-01)
 - Admin course CRUD supports multiple teachers and selected or all-active-student enrollment. `course_teachers` supplements the primary `courses.teacher_id`.
 - Admin account removal is permanent in Clerk and PostgreSQL. The identity-provider deletion must succeed before the database row is removed; authored teaching content remains with a nullable author reference.
 - Live whiteboards are course-scoped. Teachers control a session and its canvas; students explicitly join, can view and chat, and cannot draw. Chat messages expire after ten minutes; strokes remain with session history.
@@ -367,3 +379,4 @@ Retries: exponential backoff for Gemini/Storage (max 3). Backups: Supabase daily
 - The same animated AI orb is used in the assistant page, floating launcher, and panel; `web/src/app/icon.svg` is the favicon.
 - Student dashboard task completion states are fetched in one batched query for the selected tasks rather than one sequential query per task; a regression test verifies the response states and query bound.
 - Performance audit follow-up: bulk teacher analytics aggregation and bound/paginate task-completion history. API p95 and query-count/load targets remain to be measured.
+- Community Chat uses IndexedDB to persist device private keys and conversation keys without a TTL. The 10-hour inactivity cleanup removes conversation and message database rows and server key envelopes, but not separately stored audio objects.

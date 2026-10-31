@@ -4,7 +4,11 @@ from fastapi import HTTPException
 
 from app.db.models.course import Course
 from app.db.models.user import User, UserRole
-from app.db.models.whiteboard import WhiteboardMessage, WhiteboardSession, WhiteboardStroke
+from app.db.models.whiteboard import (
+    WhiteboardMessage,
+    WhiteboardSession,
+    WhiteboardStroke,
+)
 from app.repositories.whiteboard_repository import WhiteboardRepository
 from app.schemas.whiteboard import (
     WhiteboardCourseResponse,
@@ -107,7 +111,6 @@ class WhiteboardService:
         self, user: User, session_id: uuid.UUID
     ) -> list[WhiteboardMessageResponse]:
         session = await self._get_active_accessible_session(user, session_id)
-        await self.repo.delete_expired_messages()
         rows = await self.repo.list_messages(session.id)
         return [
             self._message_response(message, sender, user.id)

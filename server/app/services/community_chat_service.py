@@ -1,19 +1,33 @@
+import base64
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
-from fastapi import HTTPException, status
-from app.db.models.chat import CommunityConversation, CommunityConversationKind
+
+from cryptography.exceptions import UnsupportedAlgorithm
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from fastapi import HTTPException
+
+from app.db.models.chat import (
+    CommunityChatDevice,
+    CommunityConversation,
+    CommunityConversationKeyEnvelope,
+    CommunityConversationKind,
+)
 from app.db.models.user import User, UserRole, UserStatus
 from app.repositories.community_chat_repository import (
     COMMUNITY_CHAT_LIFETIME,
     CommunityChatRepository,
 )
-from app.services.storage_service import StorageService
 from app.schemas.chat import (
+    CommunityChatDeviceResponse,
     CommunityConversationResponse,
+    CommunityKeyEnvelopeCreate,
+    CommunityKeyEnvelopeResponse,
     CommunityMessageResponse,
     CommunityStudentOption,
 )
+from app.services.storage_service import StorageService
 
 
 class CommunityChatService:
@@ -96,6 +110,113 @@ class CommunityChatService:
             )
             for student in students
         ]
+
+    async def register_device(
+        self, user: User, device_id: uuid.UUID, public_key: str
+    ) -> CommunityChatDeviceResponse:
+        if user.status != UserStatus.ACTIVE:
+            raise HTTPException(status_code=403, detail="This chat action is not allowed")
+        try:
+            parsed_key = serialization.load_der_public_key(
+                base64.b64decode(public_key, validate=True)
+            )
+        except (ValueError, TypeError, UnsupportedAlgorithm) as error:
+            raise HTTPException(status_code=422, detail="Invalid chat device public key") from error
+        if not isinstance(parsed_key, rsa.RSAPublicKey) or parsed_key.key_size != 3072:
+            raise HTTPException(status_code=422, detail="Chat device keys must be RSA-3072")
+        existing = await self.repo.get_device(device_id)
+        if existing:
+            if existing.user_id != user.id or existing.public_key != public_key:
+                raise HTTPException(status_code=409, detail="This chat device is already registered")
+            return CommunityChatDeviceResponse(
+                device_id=existing.device_id,
+                user_id=existing.user_id,
+                public_key=existing.public_key,
+            )
+        device = CommunityChatDevice(
+            device_id=device_id,
+            user_id=user.id,
+            public_key=public_key,
+        )
+        await self.repo.save_device(device)
+        return CommunityChatDeviceResponse(
+            device_id=device.device_id,
+            user_id=device.user_id,
+            public_key=device.public_key,
+        )
+
+    async def list_conversation_devices(
+        self, user: User, conversation_id: uuid.UUID
+    ) -> list[CommunityChatDeviceResponse]:
+        conversation = await self._get_accessible_conversation(user, conversation_id)
+        if conversation.kind == CommunityConversationKind.STUDENT_ROOM:
+            participant_ids = await self.repo.list_active_user_ids(
+                {UserRole.STUDENT, UserRole.TEACHER}
+            )
+        elif conversation.kind == CommunityConversationKind.PEER_DIRECT:
+            participant_ids = {conversation.peer_one_id, conversation.peer_two_id}
+        elif conversation.kind == CommunityConversationKind.ADMIN_SUPPORT:
+            participant_ids = await self.repo.list_active_user_ids(
+                {UserRole.ADMIN}, {conversation.requester_student_id}
+            )
+        else:
+            participant_ids = await self.repo.list_active_user_ids(
+                {UserRole.TEACHER}, {conversation.requester_student_id}
+            )
+        devices = await self.repo.list_devices_for_users(participant_ids)
+        return [
+            CommunityChatDeviceResponse(
+                device_id=device.device_id,
+                user_id=device.user_id,
+                public_key=device.public_key,
+            )
+            for device in devices
+        ]
+
+    async def list_key_envelopes(
+        self, user: User, conversation_id: uuid.UUID
+    ) -> list[CommunityKeyEnvelopeResponse]:
+        await self._get_accessible_conversation(user, conversation_id)
+        envelopes = await self.repo.list_key_envelopes(conversation_id)
+        return [
+            CommunityKeyEnvelopeResponse(
+                key_id=envelope.key_id,
+                device_id=envelope.device_id,
+                wrapped_key=envelope.wrapped_key,
+                created_at=envelope.created_at,
+            )
+            for envelope in envelopes
+        ]
+
+    async def save_key_envelopes(
+        self,
+        user: User,
+        conversation_id: uuid.UUID,
+        sender_device_id: uuid.UUID,
+        envelopes: list[CommunityKeyEnvelopeCreate],
+    ) -> None:
+        await self._get_accessible_conversation(user, conversation_id)
+        sender_device = await self.repo.get_device(sender_device_id)
+        if not sender_device or sender_device.user_id != user.id:
+            raise HTTPException(status_code=404, detail="Chat device not found")
+        directory = await self.list_conversation_devices(user, conversation_id)
+        allowed_device_ids = {device.device_id for device in directory}
+        if any(envelope.device_id not in allowed_device_ids for envelope in envelopes):
+            raise HTTPException(status_code=403, detail="A key recipient is not in this chat")
+        for item in envelopes:
+            existing = await self.repo.get_key_envelope(
+                conversation_id, item.key_id, item.device_id
+            )
+            if existing:
+                continue
+            await self.repo.save_key_envelope(
+                CommunityConversationKeyEnvelope(
+                    conversation_id=conversation_id,
+                    key_id=item.key_id,
+                    device_id=item.device_id,
+                    wrapped_key=item.wrapped_key,
+                )
+            )
 
     async def start_peer_direct(
         self, current_user: User, other_student_id: uuid.UUID
@@ -235,7 +356,9 @@ class CommunityChatService:
         storage_path = (
             f"community-chat/{conversation.id}/{message_id}.{extension}"
         )
-        saved_path = await StorageService.upload_file(storage_path, contents, media_type)
+        saved_path = await StorageService.upload_file(
+            storage_path, contents, "application/octet-stream"
+        )
         try:
             message = await self.repo.add_message(
                 conversation,

@@ -32,6 +32,8 @@ from app.db.models.chat import (
     CommunityConversation,
     CommunityConversationKind,
     CommunityMessage,
+    CommunityChatDevice,
+    CommunityConversationKeyEnvelope,
 )
 from app.db.models.planner import PlannerEntry, PlannerEntryKind, PlannerNoteShape
 from app.db.models.whiteboard import (
@@ -85,6 +87,8 @@ __all__ = [
     "CommunityConversation",
     "CommunityConversationKind",
     "CommunityMessage",
+    "CommunityChatDevice",
+    "CommunityConversationKeyEnvelope",
     "PlannerEntry",
     "PlannerEntryKind",
     "PlannerNoteShape",

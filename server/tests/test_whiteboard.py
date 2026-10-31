@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Course, Enrollment, EnrollmentStatus
 from app.db.models.whiteboard import WhiteboardMessage
+from app.repositories.whiteboard_repository import WhiteboardRepository
 
 
 def auth(user_id: str) -> dict[str, str]:
@@ -211,6 +212,12 @@ async def test_live_chat_is_class_scoped_and_messages_expire_after_ten_minutes(
     assert messages.status_code == 200
     assert len(messages.json()) == 1
     assert messages.json()[0]["content"] == "I’ll go over that now."
+    assert await db_session.scalar(
+        select(WhiteboardMessage.id).where(
+            WhiteboardMessage.id == UUID(message["id"])
+        )
+    ) == UUID(message["id"])
+    assert await WhiteboardRepository(db_session).delete_expired_messages() == 1
     assert await db_session.scalar(
         select(WhiteboardMessage.id).where(
             WhiteboardMessage.id == UUID(message["id"])

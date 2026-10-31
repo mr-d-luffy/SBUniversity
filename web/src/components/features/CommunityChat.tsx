@@ -18,6 +18,18 @@ import {
   X,
 } from "lucide-react";
 import { api, getBaseUrl, getDevAuthToken } from "@/lib/api";
+import {
+  createConversationKey,
+  decryptChatAudio,
+  decryptChatText,
+  encryptChatAudio,
+  encryptChatText,
+  getConversationKeysForUser,
+  getOrCreateDeviceIdentity,
+  unwrapConversationKey,
+  wrapConversationKey,
+  type ConversationChatKey,
+} from "@/lib/community-chat-crypto";
 
 type ConversationKind =
   | "student_room"
@@ -58,6 +70,19 @@ interface StudentOption {
   avatar_url?: string | null;
 }
 
+interface ChatDevice {
+  device_id: string;
+  user_id: string;
+  public_key: string;
+}
+
+interface ChatKeyEnvelope {
+  key_id: string;
+  device_id: string;
+  wrapped_key: string;
+  created_at: string;
+}
+
 const ROLE_TOKENS = {
   student: "student",
   teacher: "teacher",
@@ -79,8 +104,21 @@ function avatarInitials(name: string): string {
     .toUpperCase();
 }
 
+function userIdFromToken(token: string): string | null {
+  if (token.startsWith("dev-token-")) return token.slice("dev-token-".length).replace(/^[^-]+-/, "");
+  const payload = token.split(".")[1];
+  if (!payload) return null;
+  try {
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const parsed = JSON.parse(atob(normalized)) as { sub?: unknown };
+    return typeof parsed.sub === "string" ? parsed.sub : null;
+  } catch {
+    return null;
+  }
+}
+
 export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" }) {
-  const { getToken } = useAuth();
+  const { getToken, userId } = useAuth();
   const isStudent = role === "student";
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -96,8 +134,13 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
   const [loadingAudioIds, setLoadingAudioIds] = useState<Record<string, boolean>>({});
   const [startingConversation, setStartingConversation] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [encryptionReadyFor, setEncryptionReadyFor] = useState<string | null>(null);
+  const [encryptionError, setEncryptionError] = useState<string | null>(null);
+  const [chatUserId, setChatUserId] = useState<string | null>(userId ?? null);
+  const [activeChatKeys, setActiveChatKeys] = useState<Record<string, ConversationChatKey>>({});
   const messageEndRef = useRef<HTMLDivElement>(null);
   const selectedConversationIdRef = useRef<string | null>(null);
+  const chatUserIdRef = useRef<string | null>(userId ?? null);
   const messagesRequestRef = useRef(new Set<string>());
   const conversationsRequestRef = useRef(false);
   const conversationRevisionRef = useRef(0);
@@ -111,9 +154,11 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
   const sendRecordingRef = useRef(false);
   const audioUrlsRef = useRef<Record<string, string>>({});
   const audioLoadingRef = useRef(new Set<string>());
+  const keySyncingRef = useRef(new Set<string>());
   const mountedRef = useRef(true);
   const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
   selectedConversationIdRef.current = selectedId;
+  chatUserIdRef.current = chatUserId;
 
   const resolveToken = useCallback(async () => {
     let token = await getToken();
@@ -134,15 +179,21 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
       const token = await resolveToken();
       const data = await api<Conversation[]>("/community-chat/conversations", token ?? undefined);
       if (requestRevision !== conversationRevisionRef.current) return;
+      const safePreviews = data.map((conversation) => ({
+        ...conversation,
+        last_message: conversation.last_message?.startsWith("e2ee:v1:")
+          ? "🔒 Encrypted message"
+          : conversation.last_message,
+      }));
       setConversations((current) => {
-        const unchanged = current.length === data.length && current.every((item, index) => {
-          const next = data[index];
+        const unchanged = current.length === safePreviews.length && current.every((item, index) => {
+          const next = safePreviews[index];
           return item.id === next.id && item.title === next.title &&
             item.last_message === next.last_message &&
             item.last_message_at === next.last_message_at &&
             item.expires_at === next.expires_at;
         });
-        return unchanged ? current : data;
+        return unchanged ? current : safePreviews;
       });
       setSelectedId((current) =>
         current ?? (manuallyDismissedSelectionRef.current ? null : data[0]?.id ?? null),
@@ -164,10 +215,23 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
       if (showSpinner) setLoadingMessages(true);
       try {
         const token = await resolveToken();
-        const data = await api<Message[]>(
+        const encryptedData = await api<Message[]>(
           `/community-chat/conversations/${conversationId}/messages`,
           token ?? undefined,
         );
+        const data = await Promise.all(encryptedData.map(async (message) => {
+          if (!message.content.startsWith("e2ee:v1:")) return message;
+          const currentUserId = chatUserIdRef.current;
+          if (!currentUserId) {
+            return { ...message, content: "🔒 Encrypted message — key unavailable on this device" };
+          }
+          try {
+            const decrypted = await decryptChatText(currentUserId, conversationId, message.content);
+            return { ...message, content: decrypted.content };
+          } catch {
+            return { ...message, content: "🔒 Encrypted message — key unavailable on this device" };
+          }
+        }));
         if (
           selectedConversationIdRef.current === conversationId &&
           requestRevision === (messageRevisionRef.current.get(conversationId) ?? 0)
@@ -205,6 +269,125 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
     },
     [resolveToken],
   );
+
+  useEffect(() => {
+    if (!selectedId) {
+      setEncryptionReadyFor(null);
+      setEncryptionError(null);
+      return;
+    }
+
+    let active = true;
+    const conversationId = selectedId;
+    setEncryptionReadyFor(null);
+    setEncryptionError(null);
+
+    const syncEncryption = async () => {
+      if (keySyncingRef.current.has(conversationId)) return;
+      keySyncingRef.current.add(conversationId);
+      try {
+        const token = await resolveToken();
+        const identityId = userId ?? (token ? userIdFromToken(token) : null);
+        if (!identityId) {
+          throw new Error("Could not identify your account for encrypted chat.");
+        }
+        chatUserIdRef.current = identityId;
+        setChatUserId(identityId);
+        const identity = await getOrCreateDeviceIdentity(identityId);
+        await api<ChatDevice>("/community-chat/devices", token ?? undefined, {
+          method: "POST",
+          body: JSON.stringify({
+            device_id: identity.deviceId,
+            public_key: identity.publicKey,
+          }),
+        });
+        const [devices, envelopes] = await Promise.all([
+          api<ChatDevice[]>(
+            `/community-chat/conversations/${conversationId}/devices`,
+            token ?? undefined,
+          ),
+          api<ChatKeyEnvelope[]>(
+            `/community-chat/conversations/${conversationId}/keys`,
+            token ?? undefined,
+          ),
+        ]);
+        let localKeys = await getConversationKeysForUser(identityId, conversationId);
+        const ownEnvelopes = envelopes.filter((envelope) => envelope.device_id === identity.deviceId);
+        for (const envelope of ownEnvelopes) {
+          if (!localKeys.some((key) => key.keyId === envelope.key_id)) {
+            await unwrapConversationKey(
+              identityId,
+              conversationId,
+              envelope.key_id,
+              envelope.wrapped_key,
+              identity.privateKey,
+            );
+          }
+        }
+        localKeys = await getConversationKeysForUser(identityId, conversationId);
+
+        if (localKeys.length === 0 && envelopes.length === 0) {
+          localKeys = [await createConversationKey(identityId, conversationId)];
+        }
+        if (localKeys.length === 0) {
+          throw new Error(
+            "This device needs a key from a device that already has access to this conversation.",
+          );
+        }
+
+        const availableKeyIds = new Set(envelopes.map((envelope) => `${envelope.key_id}:${envelope.device_id}`));
+        const newEnvelopes: { key_id: string; device_id: string; wrapped_key: string }[] = [];
+        for (const key of localKeys) {
+          for (const device of devices) {
+            if (availableKeyIds.has(`${key.keyId}:${device.device_id}`)) continue;
+            newEnvelopes.push({
+              key_id: key.keyId,
+              device_id: device.device_id,
+              wrapped_key: await wrapConversationKey(conversationId, key, device.public_key),
+            });
+          }
+        }
+        if (newEnvelopes.length > 0) {
+          await api<void>(
+            `/community-chat/conversations/${conversationId}/keys?sender_device_id=${identity.deviceId}`,
+            token ?? undefined,
+            { method: "POST", body: JSON.stringify(newEnvelopes) },
+          );
+        }
+
+        if (!active) return;
+        const newestKeyId = envelopes
+          .map((envelope) => envelope.key_id)
+          .sort()
+          .at(-1) ?? localKeys.map((key) => key.keyId).sort().at(-1);
+        const activeKey = localKeys.find((key) => key.keyId === newestKeyId) ?? localKeys[0];
+        setActiveChatKeys((current) => ({ ...current, [conversationId]: activeKey }));
+        setEncryptionReadyFor(conversationId);
+        setEncryptionError(null);
+        await loadMessages(conversationId);
+      } catch (syncError) {
+        if (active) {
+          setEncryptionReadyFor(null);
+          setEncryptionError(
+            syncError instanceof Error
+              ? syncError.message
+              : "Could not prepare end-to-end encryption for this chat.",
+          );
+        }
+      } finally {
+        keySyncingRef.current.delete(conversationId);
+      }
+    };
+
+    void syncEncryption();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void syncEncryption();
+    }, 10000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [loadMessages, resolveToken, selectedId, userId]);
 
   useEffect(() => {
     void loadConversations();
@@ -367,7 +550,9 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
       if (!conversation) return current;
       const updated = {
         ...conversation,
-        last_message: message.content,
+        last_message: message.content.startsWith("e2ee:v1:")
+          ? "🔒 Encrypted message"
+          : message.content,
         last_message_at: message.created_at,
       };
       return [updated, ...current.filter((item) => item.id !== message.conversation_id)];
@@ -376,14 +561,22 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
 
   async function sendAudioFile(file: File) {
     if (!selectedId || uploadingAudio) return;
+    const conversationId = selectedId;
+    const encryptionKey = activeChatKeys[conversationId];
+    if (encryptionReadyFor !== conversationId || !encryptionKey) {
+      setError("Wait for end-to-end encryption to finish before sending.");
+      return;
+    }
     setUploadingAudio(true);
     setError(null);
     try {
       const token = await resolveToken();
+      const encryptedAudio = await encryptChatAudio(conversationId, encryptionKey, file);
       const form = new FormData();
-      form.append("file", file);
+      form.append("file", encryptedAudio, "voice-message.enc");
+      const mediaType = file.type.split(";")[0] || "audio/webm";
       const sentMessage = await api<Message>(
-        `/community-chat/conversations/${selectedId}/audio`,
+        `/community-chat/conversations/${conversationId}/audio?media_type=${encodeURIComponent(mediaType)}`,
         token ?? undefined,
         { method: "POST", body: form },
       );
@@ -489,7 +682,16 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
       if (!response.ok) throw new Error("Could not load this voice message.");
-      const url = URL.createObjectURL(await response.blob());
+      const encryptedAudio = await response.blob();
+      const identityId = chatUserIdRef.current;
+      if (!identityId) throw new Error("Could not identify your account to decrypt this voice message.");
+      const clearAudio = await decryptChatAudio(
+        identityId,
+        message.conversation_id,
+        encryptedAudio,
+        message.audio_mime_type || "audio/webm",
+      );
+      const url = URL.createObjectURL(clearAudio);
       if (mountedRef.current) {
         audioUrlsRef.current[message.id] = url;
         setAudioUrls((current) => ({ ...current, [message.id]: url }));
@@ -513,6 +715,11 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
     if (!selectedId || !messageText.trim() || sending) return;
     const conversationId = selectedId;
     const content = messageText.trim();
+    const encryptionKey = activeChatKeys[conversationId];
+    if (encryptionReadyFor !== conversationId || !encryptionKey) {
+      setError("Wait for end-to-end encryption to finish before sending.");
+      return;
+    }
     const pendingId = `pending:${Date.now()}:${Math.random().toString(36).slice(2)}`;
     const pendingMessage: Message = {
       id: pendingId,
@@ -532,15 +739,23 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
     setError(null);
     try {
       const token = await resolveToken();
+      const encryptedContent = await encryptChatText(conversationId, encryptionKey, content);
       const sentMessage = await api<Message>(
         `/community-chat/conversations/${conversationId}/messages`,
         token ?? undefined,
         {
           method: "POST",
-          body: JSON.stringify({ content }),
+          body: JSON.stringify({ content: encryptedContent }),
         },
       );
-      acceptSentMessage(sentMessage);
+      const identityId = chatUserIdRef.current;
+      const decryptedSentMessage = identityId
+        ? {
+            ...sentMessage,
+            content: (await decryptChatText(identityId, conversationId, sentMessage.content)).content,
+          }
+        : sentMessage;
+      acceptSentMessage(decryptedSentMessage);
     } catch (sendError) {
       if (selectedConversationIdRef.current === conversationId) {
         setMessages((current) => current.filter((message) => message.id !== pendingId));
@@ -553,10 +768,10 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
   }
 
   return (
-    <section className="flex h-[calc(100dvh-8.75rem)] min-h-[32rem] min-w-0 flex-col overflow-hidden rounded-2xl border border-cream-300 bg-white shadow-sm lg:h-[calc(100dvh-10rem)]">
-      <div className="flex min-h-0 flex-1">
+    <section className="flex h-[calc(100dvh-7rem)] min-h-[34rem] min-w-0 flex-col overflow-hidden rounded-[2rem] border border-cream-300 bg-cream-50/70 p-2 shadow-md sm:p-3 lg:h-[calc(100dvh-8rem)] lg:min-h-[38rem]">
+      <div className="flex min-h-0 flex-1 gap-2 sm:gap-3">
         <aside
-          className={`w-full shrink-0 flex-col border-r border-cream-200 lg:flex lg:w-[21rem] ${
+          className={`w-full shrink-0 flex-col overflow-hidden rounded-2xl border border-cream-300 bg-white shadow-md sm:rounded-3xl lg:flex lg:w-[22rem] ${
             selectedConversation ? "hidden" : "flex"
           }`}
           aria-label="Chat conversations"
@@ -664,7 +879,7 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
                   />
                 </label>
                 {(studentSearch || students.length > 0) && (
-                  <div className="mt-2 max-h-[calc(100dvh-18rem)] space-y-1 overflow-y-auto">
+                  <div className="mt-2 space-y-1">
                     {students.map((student) => (
                       <button
                         type="button"
@@ -698,7 +913,7 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
         </aside>
 
         <div
-          className={`min-w-0 flex-1 flex-col ${
+          className={`min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-cream-300 bg-white shadow-md sm:rounded-3xl ${
             selectedConversation ? "flex" : "hidden lg:flex"
           }`}
         >
@@ -741,6 +956,19 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
                 </div>
                 <span className="hidden items-center gap-1 text-[11px] text-ink-muted sm:flex">
                   <Clock3 size={13} /> Clears 10 hours after latest message
+                </span>
+                <span
+                  title={encryptionReadyFor === selectedId
+                    ? "Messages are encrypted on your device before they are sent."
+                    : "Preparing end-to-end encryption for this conversation."}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-[10px] font-semibold text-green-800"
+                >
+                  {encryptionReadyFor === selectedId ? (
+                    <ShieldCheck size={13} />
+                  ) : (
+                    <LoaderCircle size={13} className="animate-spin" />
+                  )}
+                  {encryptionReadyFor === selectedId ? "Encrypted" : "Securing"}
                 </span>
               </header>
 
@@ -845,6 +1073,14 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
                     {error}
                   </p>
                 )}
+                {encryptionError && (
+                  <p role="alert" className="mb-2 text-xs text-danger">
+                    {encryptionError}
+                  </p>
+                )}
+                <p className="mb-2 text-[10px] text-ink-muted">
+                  End-to-end encrypted
+                </p>
                 {recording ? (
                   <div className="flex justify-center">
                     <div className="flex min-h-[4.5rem] w-full max-w-md items-center gap-4 rounded-full border border-sky-200 bg-gradient-to-r from-sky-200 via-cyan-300 to-sky-200 px-3 py-2 shadow-inner shadow-sky-400/20 sm:px-5">
@@ -901,12 +1137,13 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
                         maxLength={4000}
                         placeholder="Write a message…"
                         aria-label="Message"
+                        disabled={encryptionReadyFor !== selectedId}
                         className="max-h-32 min-h-11 min-w-0 flex-1 resize-y rounded-xl border border-cream-300 bg-cream-50 px-3.5 py-3 text-sm text-ink"
                       />
                       <button
                         type="button"
                         onClick={() => void toggleRecording()}
-                        disabled={sending || uploadingAudio}
+                        disabled={sending || uploadingAudio || encryptionReadyFor !== selectedId}
                         aria-label="Record voice message"
                         title="Record voice message"
                         className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-cream-300 bg-white text-green-800 transition hover:bg-cream-50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -919,7 +1156,7 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
                       </button>
                       <button
                         type="submit"
-                        disabled={sending || !messageText.trim()}
+                        disabled={sending || !messageText.trim() || encryptionReadyFor !== selectedId}
                         aria-label="Send message"
                         className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-bordo-700 text-white transition hover:bg-bordo-500 disabled:cursor-not-allowed disabled:opacity-50"
                       >

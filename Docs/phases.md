@@ -2,8 +2,8 @@
 
 Legend: `[ ]` pending · `[x]` done. Each phase must end with a working, demonstrable result.
 
-## Repository status (2026-10-23)
-The repository has progressed beyond the original planning-only state. The codebase now includes the live web app, FastAPI API, Clerk-backed auth, admin and teacher flows, whiteboard, planner, ranking, AI assistant, and public credential verification. Checkboxes below reflect the current implementation snapshot, and they do not imply production deployment, configured external services, or completed load testing.
+## Repository status (2026-11-01)
+The repository includes the web app, FastAPI API, Clerk-backed auth, admin and teacher flows, whiteboard, planner, ranking, AI assistant, Community Chat, and public credential verification, plus a student-scoped Flutter Android client foundation. Checkboxes below reflect repository implementation only; they do not imply production deployment, configured external services, or completed load testing.
 
 ---
 ## Phase 0 — Documentation Foundation
@@ -13,11 +13,11 @@ The repository has progressed beyond the original planning-only state. The codeb
 **Completion:** Docs approved, no contradictions.
 
 ## Phase 1 — Project Setup
-**Objective:** Both repos run locally with CI basics.
-- [x] `web/` runs as a Next.js + TypeScript frontend and `server/` runs as a FastAPI + Python 3.13 backend.
-- [x] Linting, formatting, and project config are established in the current repo layout.
-- [ ] `.env.example` for both; config loader with validation
-- [ ] Dockerfile + docker-compose (api + redis) for local dev
+**Objective:** The web and API packages run locally with project checks.
+- [x] `web/` uses Next.js 16 + TypeScript and `server/` uses FastAPI; backend package metadata supports Python 3.11+.
+- [x] Web lint/typecheck/build scripts and backend pytest configuration are present.
+- [x] `.env.example` files and backend configuration validation are present.
+- [x] Backend Dockerfile and Docker Compose configuration are present.
 - [ ] Supabase project, Clerk app, Redis instance, Gemini key created
 - [ ] GitHub repo, branch protection, CI (lint + test)
 **Files:** root configs, `app/main.py`, `core/config.py`
@@ -132,12 +132,19 @@ The repository has progressed beyond the original planning-only state. The codeb
 - [x] Live whiteboard polling was tuned and documented.
 - [x] Student dashboard completion checks were batched in the current codebase.
 - [ ] Full production profiling, load tuning, and deployment acceptance remain outstanding.
-sk-completion status lookups into one query; regression test verifies statuses and query count.
 - [ ] Bulk teacher analytics aggregation and bound/paginate task-completion history; add regression coverage.
-**Completion:** Meets NFR targets in PRD §8.
+**Completion:** Verify targets in PRD §8 against measurements and document results.
 
 ## Phase 15 — Deployment
 - [ ] Vercel (web), container host (API), Redis, Supabase prod project
 - [ ] Prod env vars, domains, Clerk prod instance, webhook URLs
 - [ ] Monitoring/logging, backups, runbook
 **Completion:** Production smoke test passes; `memory.md` marks deployed.
+
+## Phase 16 — Community Chat
+**Objective:** Provide shared student chat, peer conversations, and staff support with encrypted text and audio.
+- [x] Conversation, device-public-key, and wrapped-key-envelope models and API routes are present.
+- [x] Browser WebCrypto encrypts text/audio; device private keys and conversation keys persist in IndexedDB without a TTL.
+- [x] Expired conversation/message database rows and key envelopes are removed after 10 hours without a new message.
+- [ ] Uploaded audio objects are not removed by the database cleanup; add/configure storage expiry and verify provider retention.
+**Completion:** Application behavior is implemented in the repository; cryptographic review, device/browser recovery UX, external storage retention, and production configuration remain to be verified.

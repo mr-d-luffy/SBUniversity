@@ -2,6 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 from typing import List, Optional
+
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
@@ -14,6 +15,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
@@ -119,12 +121,12 @@ class CommunityMessage(Base, UUIDPrimaryKeyMixin):
     __tablename__ = "community_messages"
     __table_args__ = (
         CheckConstraint(
-            "length(content) > 0 AND length(content) <= 4000",
+            "length(content) > 0 AND length(content) <= 16384",
             name="ck_community_message_content_length",
         ),
         CheckConstraint(
             "audio_size_bytes IS NULL OR "
-            "(audio_size_bytes > 0 AND audio_size_bytes <= 26214400)",
+            "(audio_size_bytes > 0 AND audio_size_bytes <= 26214528)",
             name="ck_community_message_audio_size",
         ),
     )
@@ -150,3 +152,42 @@ class CommunityMessage(Base, UUIDPrimaryKeyMixin):
         "CommunityConversation", back_populates="messages"
     )
     sender: Mapped["User"] = relationship("User", foreign_keys=[sender_id])
+
+
+class CommunityChatDevice(Base):
+    __tablename__ = "community_chat_devices"
+
+    device_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    public_key: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class CommunityConversationKeyEnvelope(Base):
+    __tablename__ = "community_conversation_key_envelopes"
+    __table_args__ = (
+        CheckConstraint(
+            "length(wrapped_key) > 0 AND length(wrapped_key) <= 4096",
+            name="ck_community_key_envelope_size",
+        ),
+    )
+
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("community_conversations.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    key_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    device_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("community_chat_devices.device_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    wrapped_key: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

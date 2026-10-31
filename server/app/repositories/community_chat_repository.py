@@ -1,12 +1,16 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
+
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
 from app.db.models.chat import (
+    CommunityChatDevice,
     CommunityConversation,
+    CommunityConversationKeyEnvelope,
     CommunityConversationKind,
     CommunityMessage,
 )
@@ -199,6 +203,71 @@ class CommunityChatRepository:
             await self.db.execute(select(User).where(User.id.in_(user_ids)))
         ).scalars().all()
         return {user.id: user for user in users}
+
+    async def get_device(self, device_id: uuid.UUID) -> Optional[CommunityChatDevice]:
+        return await self.db.get(CommunityChatDevice, device_id)
+
+    async def save_device(self, device: CommunityChatDevice) -> None:
+        self.db.add(device)
+        await self.db.commit()
+
+    async def list_devices_for_users(
+        self, user_ids: set[uuid.UUID]
+    ) -> List[CommunityChatDevice]:
+        if not user_ids:
+            return []
+        stmt = (
+            select(CommunityChatDevice)
+            .join(User, CommunityChatDevice.user_id == User.id)
+            .where(
+                CommunityChatDevice.user_id.in_(user_ids),
+                User.status == UserStatus.ACTIVE,
+            )
+        )
+        return list((await self.db.execute(stmt)).scalars().all())
+
+    async def list_active_user_ids(
+        self, roles: set[UserRole], include: Optional[set[uuid.UUID]] = None
+    ) -> set[uuid.UUID]:
+        stmt = select(User.id).where(
+            User.status == UserStatus.ACTIVE,
+            User.role.in_(roles),
+        )
+        ids = set((await self.db.execute(stmt)).scalars().all())
+        return ids | (include or set())
+
+    async def list_key_envelopes(
+        self, conversation_id: uuid.UUID
+    ) -> list[CommunityConversationKeyEnvelope]:
+        stmt = (
+            select(CommunityConversationKeyEnvelope)
+            .where(
+                CommunityConversationKeyEnvelope.conversation_id == conversation_id,
+            )
+            .order_by(CommunityConversationKeyEnvelope.created_at.desc())
+        )
+        return list((await self.db.execute(stmt)).scalars().all())
+
+    async def get_key_envelope(
+        self, conversation_id: uuid.UUID, key_id: uuid.UUID, device_id: uuid.UUID
+    ) -> Optional[CommunityConversationKeyEnvelope]:
+        return await self.db.get(
+            CommunityConversationKeyEnvelope, (conversation_id, key_id, device_id)
+        )
+
+    async def save_key_envelope(
+        self, envelope: CommunityConversationKeyEnvelope
+    ) -> None:
+        self.db.add(envelope)
+        try:
+            await self.db.commit()
+        except IntegrityError:
+            await self.db.rollback()
+            existing = await self.get_key_envelope(
+                envelope.conversation_id, envelope.key_id, envelope.device_id
+            )
+            if existing is None:
+                raise
 
     async def get_accessible_conversation(
         self, conversation_id: uuid.UUID

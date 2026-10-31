@@ -17,7 +17,29 @@ from app.core.rate_limit import RateLimiter
 from app.core.redis import InMemoryRedisFallback
 from app.core.security import SecurityError, verify_clerk_token
 from app.core.uploads import read_audio_upload, read_image_upload
+from app.main import should_record_request_telemetry
 from app.services.storage_service import _local_storage_path
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/v1/community-chat/conversations",
+        "/api/v1/community-chat/conversations/abc-123/messages",
+        "/api/v1/community-chat/conversations/abc-123/devices",
+        "/api/v1/community-chat/conversations/abc-123/keys",
+        "/api/v1/whiteboard/courses/course-123/session",
+        "/api/v1/whiteboard/sessions/session-123/messages",
+    ],
+)
+def test_high_frequency_polling_is_not_written_to_request_telemetry(path: str):
+    assert not should_record_request_telemetry("GET", path)
+
+
+def test_non_polling_gets_remain_in_request_telemetry():
+    assert should_record_request_telemetry("GET", "/api/v1/community-chat/students")
+    assert should_record_request_telemetry("GET", "/api/v1/whiteboard/courses")
+    assert not should_record_request_telemetry("POST", "/api/v1/community-chat/conversations")
 
 
 @pytest.mark.asyncio

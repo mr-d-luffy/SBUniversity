@@ -1,10 +1,10 @@
 # rules.md — SiliconBrains University Development Rules
 
-> Mandatory for every developer and AI assistant working on this repo. This version reflects the live `web/` + `server/` repository layout and coding conventions as of 2026-10-23.
+> Mandatory for every developer and AI assistant working on this repo. This version reflects the live `web/`, `server/`, and mobile-client foundation as of 2026-11-01.
 
 ## 1. Golden Rules
-1. Read `PRD.md`, `architecture.md`, `database.md`, `design.md`, `phases.md`, `memory.md` **before** implementing.
-2. Update `memory.md` after every meaningful change.
+1. Read `Docs/PRD.md`, `Docs/architecture.md`, `Docs/database.md`, `Docs/design.md`, `Docs/phases.md`, and `Docs/memory.md` before implementing.
+2. Update `Docs/memory.md` after every meaningful change.
 3. Do not change architecture, schema, or design system without updating the matching doc.
 4. Reuse existing components/utilities before creating new ones.
 
@@ -12,8 +12,8 @@
 **DO**
 - TypeScript `strict` on the frontend; type hints + Pydantic models on the backend.
 - Small focused functions/components (< ~150 lines).
-- Run formatters/linters before commit: Prettier + ESLint (web), Ruff + Black (API).
-- Python 3.13 features allowed; pin versions in `pyproject.toml`/`requirements.txt`.
+- Run the configured checks before commit: ESLint, TypeScript typecheck, and build (web); pytest (API). Ruff and Black are optional development dependencies; use them if installed and applicable.
+- Backend package metadata supports Python 3.11+ (`server/pyproject.toml`); validate against the target runtime.
 
 **DON'T**
 - No `any` in TypeScript unless commented with reason.
@@ -34,8 +34,8 @@
 | API paths | kebab-case, plural nouns | `/api/v1/exams` |
 
 ## 4. Folder Conventions
-- Follow the structures in `architecture.md` exactly.
-- Frontend: UI primitives in `components/ui`, feature components in `components/<feature>`.
+- Follow the structures in `Docs/architecture.md` as a guide and keep it synchronized with the code.
+- Frontend: UI primitives in `components/ui`, feature components in `components/features`.
 - Backend: **router → service → repository**. Routers never contain business logic or SQL.
 
 ## 5. Component Conventions
@@ -43,10 +43,10 @@
 **DON'T** Create a second Button/Card/Modal. Don't inline raw hex colors or random spacing — use the tokens in `design.md` §3.
 
 ## 6. API Conventions
-- Prefix `/api/v1`; JSON; snake_case fields in API, mapped to camelCase in `apiClient`.
-- Standard error shape (see architecture.md). Correct HTTP codes: 400/401/403/404/409/422/429.
-- Every endpoint declares auth dependency explicitly. No "default open" routes.
-- Pagination on all list endpoints.
+- Prefix `/api/v1`; JSON; API fields use snake_case. The shared helper in `src/lib/api.ts` does not provide a generic snake_case-to-camelCase mapper.
+- Use appropriate HTTP status codes (400/401/403/404/409/422/429); error bodies follow current FastAPI/application handlers and are not documented as a universal envelope.
+- Protected endpoints require authentication and authorization; public routes are explicitly public.
+- Bound or paginate list endpoints where appropriate; do not assume every current endpoint is paginated.
 - PDFs: `Content-Type: application/pdf`, `Content-Disposition: attachment; filename=...`.
 
 ## 7. Database Conventions
@@ -57,7 +57,7 @@
 
 ## 8. Security Rules
 **DO**
-- Verify Clerk JWT on **every** protected request; take role from the verified token + DB, never from request body/query.
+- Verify Clerk JWT on **every** protected request; the database role is authoritative for existing accounts. Never grant a role from request body/query.
 - Enforce RBAC (`require_role`) **and** ownership checks in services.
 - Protect all `/admin/*` with `require_role("admin")` + audit log.
 - Rate limit: chat, exam submit, login-adjacent, admin routes.
@@ -82,16 +82,15 @@
 - Frontend only exposes `NEXT_PUBLIC_*` for non-secret values (Clerk publishable key, API base URL).
 - Validate required env vars at startup (pydantic-settings); fail fast.
 
-**Backend env:** `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `CLERK_SECRET_KEY`, `CLERK_JWKS_URL`, `CLERK_ISSUER`, `CLERK_WEBHOOK_SECRET`, `REDIS_URL`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `FRONTEND_ORIGIN`.
-**Frontend env:** `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` (server only), `NEXT_PUBLIC_API_BASE_URL`.
+Use `server/.env.example` and `web/.env.example` as the environment-variable inventory; required values depend on enabled features and deployment mode. Do not assume every variable is required for every local setup.
 
 ## 11. Error Handling Rules
-- Backend: custom exception classes → global handlers → standard error shape. No stack traces to clients.
+- Backend: use the existing FastAPI/application exception handlers; do not promise a uniform error envelope unless the API implements one. No stack traces to clients.
 - Frontend: error boundaries per route group; toast for recoverable errors; friendly empty/error states.
 - Exam autosave failures retry with backoff and show "not saved" indicator.
 
 ## 12. Validation Rules
-- Backend Pydantic is the source of truth; frontend validation (react-hook-form + zod) mirrors it for UX only.
+- Backend Pydantic is the source of truth; frontend validation should mirror backend constraints for UX only.
 - Server enforces: exam window, attempt limits, `expires_at`, single-correct-option rule, notice scope.
 
 ## 13. Responsive & Accessibility Rules
@@ -107,7 +106,7 @@
 ## 15. Dependency Rules
 - Justify each new dependency (note in PR). Prefer standard library / existing deps.
 - Pin versions; audit with `npm audit` / `pip-audit` periodically.
-- Planned core deps only: Next.js, Tailwind, `@clerk/nextjs`, SWR (or React Query), react-hook-form, zod, lucide-react, recharts (admin charts) · FastAPI, uvicorn, pydantic-settings, SQLAlchemy, asyncpg, alembic, redis, PyJWT (+ cryptography), httpx, svix, google-genai, reportlab, qrcode, pillow, supabase-py (storage only), pytest.
+- Web dependencies are declared in `web/package.json` (Next.js 16, React 19, Tailwind CSS 4, Clerk, and Lucide). Backend runtime and optional development dependencies are declared in `server/pyproject.toml` and `server/requirements.txt`; review those manifests before adding assumptions about frameworks or test tooling.
 
 ## 16. Performance Rules
 - Cache read-heavy endpoints in Redis (see architecture §11); invalidate on write.
@@ -122,7 +121,7 @@
 ## 17. Testing Rules
 - Backend: pytest + httpx; test services (grading, ranking, completion rule) and RBAC on every router.
 - Mandatory tests: admin routes reject student/teacher; student cannot read others' results; correct answers not leaked; expired attempt auto-submit; certificate issuance and revoke.
-- Frontend: component tests (Vitest/RTL) for key components; Playwright e2e for login → exam → result → PDF download.
+- Frontend: the current package scripts expose `lint`, `typecheck`, `build`, `dev`, and `start`; no frontend component-test or Playwright script is defined in `web/package.json`.
 - No feature is "done" without tests for its critical path.
 
 ## 18. AI (Aarsh Intelligence) Rules
@@ -138,7 +137,7 @@ Palette: **Bordo `#6C151E`**, **Green `#0F3D3A`**, **Cream `#F5DABF`** (+ white 
 
 **DO**
 - Keep the ratio: **60% cream/white** (backgrounds, cards), **30% green** (sidebar, top bars, headings, links, icons), **10% bordo** (primary CTA, key highlights, seal).
-- Use semantic aliases (`bg-page`, `bg-surface`, `bg-brand`, `bg-cta`) and Tailwind tokens from `tailwind.config.ts`.
+- Use semantic palette tokens declared with Tailwind CSS v4 `@theme` in `web/src/app/globals.css`.
 - Use **one primary (bordo) button per view**; max 1–2 bordo elements per viewport.
 - On green surfaces use cream/white text and the **Inverse** (cream) button.
 - Use `ink` (`#092A28`) for text, `cream-300` for borders.
@@ -163,7 +162,7 @@ Ranking is based on **Task Points** (see `PRD.md` §7.9, §7.13 and `database.md
 - Auto-create an exam task when an exam is published with `task_points > 0`; archive it when the exam is closed.
 - Remove a student from the leaderboard (`ZREM`) when suspended/deleted; refresh when reactivated.
 - Use **revoke** (status change + audit log) to remove points; never delete `task_completions` rows.
-- Serve the leaderboard from Redis; fall back to the SQL in `database.md` only if Redis is unavailable. Rebuild from DB on cold start and reconcile nightly.
+- Serve the leaderboard from Redis; fall back to the SQL in `database.md` when Redis is empty or unavailable. Rebuild overall scores from DB at startup and refresh them on score-changing events.
 - Enforce ownership: teachers create/approve tasks only for their **own courses**.
 
 **DON'T**
@@ -175,3 +174,9 @@ Ranking is based on **Task Points** (see `PRD.md` §7.9, §7.13 and `database.md
 - Don't hard-delete published exams or tasks that have completions (archive instead).
 
 **Tests (mandatory):** no double-award (retry + multi-attempt), points awarded in the same transaction (rollback leaves no points), approve/reject flow, revoke removes points and rank, tie-break order, Redis rebuild equals SQL result, suspended users excluded, teacher cannot approve another teacher's course.
+
+## 21. Community Chat Encryption Rules
+- Encrypt message text and audio in the browser using the existing WebCrypto utility; never send plaintext or private keys to the API.
+- Persist device private keys and conversation keys in IndexedDB. They have no application TTL; document device/browser storage loss and key-provisioning limits.
+- Treat server-stored message bodies, audio objects, and key envelopes as ciphertext, but remember that sender/recipient, timestamps, role, and other metadata remain visible to the service.
+- The 10-hour inactivity cleanup removes conversation/message database rows and key envelopes; it does not delete uploaded audio objects. Do not describe audio object retention as complete until that storage cleanup is implemented/configured.

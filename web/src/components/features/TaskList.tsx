@@ -205,7 +205,13 @@ export function TaskList({ initial }: { initial?: TaskItem[] }) {
       {courseId && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-cream-200 bg-white px-4 py-3">
           <p className="text-sm text-ink-muted">Showing tasks for the selected course.</p>
-          <Link href="/student/tasks" className="inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-green-800 hover:bg-cream-100">Show all course tasks</Link>
+          <Link
+            href="/student/tasks"
+            onClick={() => setCourseId(null)}
+            className="inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-green-700 hover:bg-cream-100"
+          >
+            Show all course tasks
+          </Link>
         </div>
       )}
       <div className="mb-6 flex flex-wrap gap-2" role="tablist" aria-label="Filter tasks">

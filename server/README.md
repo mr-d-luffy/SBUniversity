@@ -6,7 +6,7 @@ Backend API for the **SiliconBrains University** platform.
 
 ## 🏛 Architecture Overview
 
-- **Framework:** FastAPI, Python 3.13, Pydantic v2
+- **Framework:** FastAPI, Python 3.11+ (`pyproject.toml`), Pydantic v2
 - **Database:** Supabase PostgreSQL with SQLAlchemy 2 (async) & `asyncpg`
 - **Real-Time & Cache:** Redis (Task Points leaderboard sorted sets, live SSE updates, caching, rate limiting)
 - **Authentication:** Clerk JWT verification via JWKS (cached) with RBAC (`student`, `teacher`, `admin`)
@@ -14,8 +14,9 @@ Backend API for the **SiliconBrains University** platform.
 - **Document Generation:** Backend ReportLab PDF engine (official Result statements & Certificates with QR codes)
 - **AI Assistant:** Aarsh Intelligence (Google Gemini) with anti-cheat live exam guardrails
 - **Live classroom:** Course-scoped whiteboard sessions, persisted strokes, and expiring class chat
+- **Community Chat:** End-to-end encrypted text and voice messages; WebCrypto keys are retained in browser IndexedDB, while inactive conversation records are cleaned up after 10 hours
 - **Admin controls:** Course CRUD, multiple course teachers, selected student enrollment, and permanent account deletion
-- **Security:** RLS enabled across all Supabase tables, parameterized queries, strict role gating
+- **Security:** Supabase RLS is configured in the SQL bootstrap as defense-in-depth; API authorization and ownership checks are the application boundary. Verify deployed database policies separately.
 
 ---
 
@@ -43,7 +44,7 @@ server/
 │   │       ├── certificate.py       # Certificate
 │   │       ├── task.py              # Task, TaskCompletion (Task Points engine)
 │   │       ├── notice.py            # Notice
-│   │       ├── chat.py              # ChatSession, ChatMessage
+│   │       ├── chat.py              # AI chat, community conversations, devices, and key envelopes
 │   │       └── audit.py             # AuditLog
 │   ├── schemas/                     # Pydantic v2 validation models
 │   ├── repositories/                # Domain data access layers
@@ -71,13 +72,18 @@ server/
 │       ├── ranking.py               # Top 4 live leaderboard & SSE stream
 │       ├── notices.py               # Notice board
 │       ├── assistant.py             # Aarsh Intelligence streaming chat
-│       └── admin/                   # Admin panel (users, progress, analytics, notices, audit)
+│       ├── community_chat.py        # Encrypted community conversations, devices, and key envelopes
+│       ├── whiteboard.py            # Course-scoped live whiteboard
+│       ├── planner.py               # Personal planner
+│       ├── activity.py              # User activity tracking
+│       ├── security.py              # Security event feed
+│       └── admin/                   # Admin panel (users, progress, analytics, notices, audit, security)
 ├── migrations/                      # Alembic migrations
 ├── scripts/
 │   ├── schema.sql                   # Supabase migration SQL schema
 │   └── seed.py                      # Database seeder (20 students, 4 courses, exams, tasks)
 ├── tests/                           # Pytest test suite (auth, exams, ranking, certificates, pdf)
-├── supabase_migration.sql           # Complete Supabase PostgreSQL schema with RLS & Storage
+├── supabase_migration.sql           # Legacy manual Supabase bootstrap; newer Alembic revisions may be required
 ├── Dockerfile                       # Multi-stage production container
 ├── docker-compose.yml               # Local container stack with Redis
 ├── requirements.txt
@@ -103,31 +109,25 @@ Fill in your connection details:
 
 ### 2. Supabase Migration
 
-#### New database bootstrap
+#### New or Alembic-tracked database
 
-For a new Supabase database only, apply the full `supabase_migration.sql` bootstrap in the SQL Editor:
-1. Open the Supabase Dashboard -> **SQL Editor**.
-2. Paste the contents of `supabase_migration.sql`.
-3. Click **Run**.
-4. The bootstrap creates the tables, custom ENUMs, indexes, triggers, and RLS policies.
-
-#### Existing database
-
-Use Alembic (recommended) to apply versioned changes when the database is already
-tracked by Alembic. Do not rerun the full bootstrap over an initialized production
-database. If the existing database was initialized from the Supabase SQL bootstrap
-and does not have an `alembic_version` table, run only the idempotent academic
-profile update block at the end of `supabase_migration.sql` in the Supabase SQL
-Editor instead of running Alembic against the untracked schema.
+Use Alembic for a fresh database and for databases already tracked by Alembic.
+The SQL bootstrap is a legacy manual schema setup and does not include every
+current revision (including the Community Chat E2EE device/envelope schema).
 ```bash
 alembic upgrade head
 ```
-The current Alembic head is `016_user_activity_days`. Run `alembic upgrade head`
-from the `server/` directory with the intended database configured in `DATABASE_URL`.
-This applies student academic fields, teacher verification, creates missing profiles
-for existing teacher accounts, and adds persistent student/teacher activity tracking.
-For an existing Supabase bootstrap database not tracked by Alembic, run
-`activity_schema_update.sql` in the Supabase SQL Editor.
+Run the command from the `server/` directory with the intended database
+configured in `DATABASE_URL`. The current Alembic head in this checkout is
+`019_community_chat_e2ee`; this applies all revisions after the database's
+recorded revision.
+
+#### Existing database created from the SQL bootstrap
+
+Do not rerun the full bootstrap or run Alembic against an untracked schema without
+first reconciling its actual revision and schema. The bootstrap does not include
+all later migrations; plan and validate the upgrade from that database to the
+current Alembic head before using features that require those changes.
 
 ### 3. Seed Sample Data (Development/Staging)
 
@@ -188,6 +188,12 @@ docker-compose up --build
 5. **Live classroom:**
    - Assigned teachers/admins manage course sessions; enrolled students join to view and chat.
    - Chat expires after ten minutes; board strokes are retained with the session.
+
+6. **Community Chat end-to-end encryption:**
+   - WebCrypto encrypts message text and recorded audio in the browser with per-conversation AES-GCM keys. Device public keys are registered with the API; conversation keys are wrapped for participant devices and stored as encrypted envelopes.
+   - The device private key and conversation keys are retained in IndexedDB with no application TTL. They can be lost when browser storage is cleared or the device/browser profile changes; a new device needs an existing device with access to provision its keys.
+   - The API and storage receive ciphertext, key envelopes, public keys, and conversation metadata, not message plaintext. Conversation/message database records and their key envelopes are removed after 10 hours without a new message. The expiry job does not itself remove uploaded audio objects from external object storage; deployment retention for those objects must be verified separately.
+   - This describes the current implementation, not an independently audited cryptographic guarantee.
 
 ---
 

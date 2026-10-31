@@ -1,13 +1,13 @@
 # SiliconBrains University Security & Access Control Policy
 
 > **Project:** SiliconBrains University
-> **Platforms:** Website (Next.js frontend + FastAPI backend/API); no Android application is currently present in this repository.
+> **Platforms:** Website (Next.js frontend + FastAPI backend/API) and a student-scoped Flutter Android client foundation. The Android client is incomplete and is not documented here as production-ready.
 > **Owner:** SiliconBrains University Engineering / Security Lead
-> **Version:** 1.0 · **Last reviewed:** 2026-10-23 · **Next review:** 2027-04-23
+> **Version:** 1.0 · **Last reviewed:** 2026-11-01 · **Next review:** 2027-05-01
 
-This document defines the security standards and access control rules for the project. All contributors must follow it. Items marked **[MUST]** are mandatory, **[SHOULD]** are strongly recommended, **[MAY]** are optional. This policy was reviewed against the live repository code in `web/` and `server/` as of 2026-10-23.
+This document defines the security standards and access control rules for the project. All contributors must follow it. Items marked **[MUST]** are mandatory, **[SHOULD]** are strongly recommended, **[MAY]** are optional. This policy was reviewed against the live repository code in `web/`, `server/`, and the documented mobile-client foundation as of 2026-11-01.
 
-This policy is tailored to the current repository. Application controls are implemented in the web and API code where possible. Operational controls (such as MFA enrollment, cloud account reviews, incident contacts, backups, and protected branch settings) require configuration by the repository and service owners and cannot be enforced by application code alone. Android requirements are not applicable until an Android client is added.
+This policy is tailored to the current repository. Application controls are implemented in the web and API code where possible. Operational controls (such as MFA enrollment, cloud account reviews, incident contacts, backups, and protected branch settings) require configuration by the repository and service owners and cannot be enforced by application code alone. The Android client foundation exists, but its release security configuration has not been independently validated.
 
 ### Project role mapping
 
@@ -25,7 +25,7 @@ Role assignment is controlled through Clerk public metadata by authorized admini
 - Backend authentication uses Clerk-signed JWTs; backend authorization uses database roles and resource ownership.
 - The repository's demo login and development auth bypass are development/test-only and must remain disabled in production.
 - The web client authenticates API calls with the `Authorization` header; credentials must not be placed in URLs or browser persistent storage.
-- The supplied Android, payment-card, MFA, infrastructure, vendor, incident-response, and legal-compliance controls remain operational obligations or not applicable; this repository does not contain the systems needed to implement them.
+- Payment-card, MFA, infrastructure, vendor, incident-response, and legal-compliance controls remain operational obligations; this repository does not contain the external systems needed to verify their configuration.
 
 ---
 
@@ -56,7 +56,7 @@ Role assignment is controlled through Clerk public metadata by authorized admini
 ## 1. Scope & Principles
 
 ### 1.1 Scope
-Applies to: website (frontend), backend/API services, databases, cloud infrastructure, CI/CD pipelines, source repositories, third-party services, and all people with access to them. Android requirements apply only if an Android client is introduced.
+Applies to: website (frontend), backend/API services, databases, the Flutter Android client foundation, cloud infrastructure, CI/CD pipelines, source repositories, third-party services, and all people with access to them. Android controls remain release requirements; the current client has not been independently validated.
 
 ### 1.2 Core Principles
 | Principle | Meaning |
@@ -262,9 +262,9 @@ if (!order || order.userId !== req.user.id) return res.status(404).end();
 
 ---
 
-## 8. Android Security (not applicable to the current repository)
+## 8. Android Security
 
-No Android project or `AndroidManifest.xml` is maintained here. The controls below are requirements for any future Android client, not implemented or release-ready configurations.
+The repository contains a student-scoped Flutter Android client, but its README states that it is not feature-complete or production-ready. Treat the controls below as release requirements, not as evidence that the current app has passed them.
 
 ### 8.1 App Configuration (`AndroidManifest.xml`)
 - **[MUST]** `android:allowBackup="false"` (or use `dataExtractionRules` / `fullBackupContent` to exclude sensitive data).
@@ -279,7 +279,7 @@ No Android project or `AndroidManifest.xml` is maintained here. The controls bel
 - **[SHOULD]** Certificate pinning (pin to public key / SPKI with backup pins and a rotation plan).
 - **[MUST NOT]** Disable certificate/hostname validation, even in debug builds shipped to users.
 
-No Android network-security configuration or certificate pins are present because there is no Android client in this repository. Do not copy sample pins into a release; establish a verified primary/backup pin and rotation plan if a client is introduced.
+Review the Android manifest, network-security configuration, and release build settings before release. Do not copy sample pins into a release; establish a verified primary/backup pin and rotation plan if pinning is adopted.
 
 ### 8.3 Data Storage
 - **[MUST]** Use app-private internal storage; never store sensitive data on external storage.
@@ -327,6 +327,12 @@ No Android network-security configuration or certificate pins are present becaus
 - **[MUST]** Encrypt backups; test restores regularly.
 - **[SHOULD]** Field-level encryption for highly sensitive fields.
 - **[MUST]** Use vetted libraries; never roll your own crypto.
+
+### Community Chat encryption
+
+The current web client uses WebCrypto for Community Chat text and recorded audio. It encrypts payloads with per-conversation AES-GCM keys and wraps those keys for registered devices using RSA-OAEP. The browser stores a non-extractable device private `CryptoKey` and conversation `CryptoKey` records in IndexedDB. Public device keys and encrypted key envelopes are stored by the API; private keys and message plaintext are not sent to the server. Sender/recipient, timestamps, role, and other conversation metadata remain visible.
+
+Device and conversation keys have **no application TTL**. The server deletes conversation/message database rows and key-envelope rows after 10 hours without a new message; this database cleanup does not delete separately stored audio objects. Browser storage clearing can destroy a user's only copy of a key, while old local keys may remain after the server conversation is deleted. This implementation has not received an independent cryptographic audit; do not describe it as a formally verified protocol.
 
 ### 9.3 Privacy & Compliance
 - **[MUST]** Collect only necessary data (data minimization) and define retention periods.
@@ -607,7 +613,7 @@ secrets/
 
 | Version | Date | Author | Changes |
 |---|---|---|---|
-| 1.0 | 2026-10-23 | SiliconBrains University Engineering | Repository-tailored policy and implementation scope |
+| 1.0 | 2026-11-01 | SiliconBrains University Engineering | Repository-tailored policy and implementation scope |
 
 ---
 
@@ -624,8 +630,7 @@ secrets/
 - Rate limiting is atomic in Redis and fails closed in production when the limiter is unavailable.
 - Audio and profile-image uploads enforce size limits and content signatures; local storage is development-only and path-confined.
 - The web applies a nonce-based CSP and standard browser security headers; `security.txt` publishes the disclosure channel.
-- Dependabot is configured for weekly updates; pinned-action CI runs CodeQL, npm/Python dependency audits, and Gitleaks on pull requests and daily.
-- The production frontend dependency audit passes. The full npm audit still reports five high-severity findings through `braces` in Next.js ESLint development tooling; no fixed `braces` release is available yet. Keep the CI alert active and update the lint toolchain when upstream publishes a fix.
+- This checkout has no `.github/workflows/` directory, so CI, CodeQL, dependency-audit, and secret-scanning automation are not established by repository workflow files.
 
 **Deployment or organizational actions still required**
 
@@ -635,6 +640,6 @@ secrets/
 - Assign incident-response and privacy/legal contacts; approve a data-retention schedule, privacy/terms notices, consent and data-subject request procedures, and vendor access reviews.
 - Configure malware scanning for uploads and verify that the Supabase bucket is private and access-controlled.
 - Perform periodic independent penetration tests, access reviews, and incident-response exercises.
-- Android release and Play Store controls are not applicable because this repository contains no Android application.
+- The Flutter Android client is a student-scoped foundation, not a feature-complete release. Verify platform configuration, release signing, Play Store disclosures, and all Android controls before shipping.
 
 These deployment actions are requirements, not claims that the external services are already configured. Review the policy every six months and whenever the architecture or applicable law changes.

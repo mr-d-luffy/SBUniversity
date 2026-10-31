@@ -1,11 +1,12 @@
 # database.md — SiliconBrains University Database Design
 
-> Repository snapshot: this schema description reflects the current `server/app/db/models/` and `server/app/repositories/` implementation as of 2026-10-24.
+> Repository snapshot: this schema description reflects the current `server/app/db/models/` and `server/app/repositories/` implementation as of 2026-11-01.
 
 ## 1. Technology
 - **Supabase PostgreSQL** (database name: `postgres`, schema `public`)
 - Access: **FastAPI only** (SQLAlchemy 2 async + asyncpg) using the Supabase connection string (pooler).
 - Migrations: **Alembic**.
+- The current migration head in this repository is `019_community_chat_e2ee`; see the [backend README](../server/README.md) for upgrade guidance.
 - Extensions: `pgcrypto` (UUID), `citext` (case-insensitive email).
 - Conventions: UUID PKs (`gen_random_uuid()`), `timestamptz`, `created_at`/`updated_at` on all mutable tables, snake_case.
 
@@ -21,6 +22,7 @@ notice_audience:  all | students | teachers | course
 notice_priority:  normal | important | urgent
 notice_status:    draft | published | archived
 chat_role:        user | model
+community_conversation_kind: student_room | peer_direct | admin_support | teacher_support
 planner_entry_kind: learning_plan | note | sticky_note | event | voice_note
 planner_note_shape: rectangle | rounded | circle | cloud | star
 task_type:        exam | assignment
@@ -49,8 +51,11 @@ tasks 1──* task_recipients *──1 users(student)   (selected-student assig
 tasks 1──* task_video_progress *──1 users(student)
 users 1──* notices (author)
 users 1──* chat_sessions 1──* chat_messages
+users 1──* community_chat_devices
 users 1──* community_messages
 community_conversations 1──* community_messages
+community_conversations 1──* community_conversation_key_envelopes
+community_chat_devices 1──* community_conversation_key_envelopes
 users 1──* planner_entries (private owner)
 courses 1──* whiteboard_sessions 1──* whiteboard_strokes
 whiteboard_sessions 1──* whiteboard_messages (expires after 10 minutes)
@@ -386,11 +391,32 @@ community_messages
  ├── id              uuid PK
  ├── conversation_id uuid NOT NULL → community_conversations.id ON DELETE CASCADE
  ├── sender_id       uuid NOT NULL → users.id ON DELETE CASCADE
- ├── content         text NOT NULL CHECK (1..4000 characters)
+ ├── content         text NOT NULL CHECK (1..16384 characters) -- e2ee:v1 ciphertext for text messages
+ ├── audio_path      varchar(512) NULL → private storage object
+ ├── audio_mime_type varchar(100) NULL
+ ├── audio_size_bytes integer NULL (up to 25 MiB plus encryption header/tag)
  └── created_at      timestamptz NOT NULL default now()
 ```
 `student_room` is shared by active students; `peer_direct` is private to its ordered student pair; `admin_support` is visible only to its student and active admins; `teacher_support` is visible only to its student and active teachers. Admin and teacher buttons open role-specific inbox threads, not conversations with arbitrary students or the other staff role. `expires_at` is reset to ten hours after every new message. A backend sweeper deletes expired conversations (and cascaded messages) once a minute; chat API calls also remove expired rows, so cleanup resumes on the next request after service downtime. Existing `chat_sessions` and `chat_messages` remain reserved for Aarsh AI and are not affected.
-Indexes: `(kind)`, `(expires_at)`, `(requester_student_id)`, `(conversation_id)`, `(sender_id)`, `(created_at)`, `(conversation_id, created_at)`. Database RLS is enabled; application access is additionally checked per conversation.
+Message text and voice audio are encrypted in the browser with WebCrypto AES-GCM before being sent; the database stores ciphertext and metadata, not message plaintext. Voice ciphertext is uploaded separately to configured object storage. Conversation cleanup deletes message rows and key envelopes, but the cleanup code does not delete the referenced audio objects; their retention is not established by this job.
+Indexes: `(kind)`, `(expires_at)`, `(requester_student_id)`, `(conversation_id)`, `(sender_id)`, `(created_at)`, `(conversation_id, created_at)`. API access is checked per conversation. Revision `019_community_chat_e2ee` does not itself enable RLS or add policies on the new device/envelope tables; verify database access roles and any required RLS policies in each deployment.
+
+### community_chat_devices / community_conversation_key_envelopes
+```
+community_chat_devices
+ ├── device_id   uuid PK
+ ├── user_id     uuid NOT NULL → users.id ON DELETE CASCADE
+ ├── public_key  text NOT NULL -- base64-encoded RSA-3072 public key
+ └── created_at  timestamptz NOT NULL default now()
+
+community_conversation_key_envelopes
+ ├── conversation_id uuid NOT NULL → community_conversations.id ON DELETE CASCADE
+ ├── key_id          uuid PK (composite)
+ ├── device_id       uuid NOT NULL → community_chat_devices.device_id ON DELETE CASCADE
+ ├── wrapped_key     text NOT NULL -- AES conversation key wrapped with device RSA-OAEP public key
+ └── created_at      timestamptz NOT NULL default now()
+```
+The browser retains the non-extractable device private `CryptoKey` and conversation `CryptoKey` records in IndexedDB; no application TTL is applied. The service stores public keys and wrapped envelopes only. Envelopes are deleted with their conversation; device rows are deleted with the user account. Browser-local keys can remain until the user clears browser storage, even after server-side conversation cleanup. Apply Alembic revision `019_community_chat_e2ee` (after `018_security_request_events`) to add these tables and update the community message constraints.
 
 ### planner_entries
 ```
@@ -474,16 +500,16 @@ student or teacher's foreground time is accumulated by the API in short heartbea
 a day counts toward the streak at 60 seconds. The badge claim flag is stored on the
 first day of the current streak so the same continuing streak cannot claim repeatedly.
 The browser never accesses this table directly; RLS is enabled without client policies.
-Apply Alembic revision `016_user_activity_days`, or use
+For this specific activity-tracking schema update, Alembic revision `016_user_activity_days` is part of the migration history, or use
 [`server/activity_schema_update.sql`](../server/activity_schema_update.sql) for an
 existing Supabase bootstrap database that is not tracked by Alembic.
 
 Permanent admin course deletion removes the course's related exams, attempts, results, tasks, enrollments, certificates, notices, and whiteboard sessions. Permanent user deletion removes the identity-provider account and database user; student-owned records cascade with that user, while authored exams, tasks, notices, and whiteboard sessions are retained with their creator field set to NULL. A teacher must be reassigned from all courses before their account can be deleted. The last active administrator and the signed-in administrator cannot be deleted.
 
-Apply the new schema with `alembic upgrade head` (revision `011_admin_course_management`) or execute the corresponding update section at the end of `server/supabase_migration.sql` against Supabase PostgreSQL.
+Revision `011_admin_course_management` added the course-management schema. For the current schema, use `alembic upgrade head` from `server/` as described in `server/README.md`; the legacy SQL bootstrap does not include every later revision. Reconcile a database initialized from that bootstrap before applying Alembic revisions.
 
 ## 5. Derived Data (no duplicate storage)
-- **Leaderboard (Task Points):** computed from `task_completions` and held in Redis; rebuilt from DB on cold start and reconciled nightly. Exam marks are **not** used.
+- **Leaderboard (Task Points):** computed from `task_completions` and held in Redis; overall scores rebuild from DB at startup and refresh on score-changing events. Reads fall back to SQL when Redis is empty or unavailable. Exam marks are **not** used.
   ```sql
   -- Overall Top 4
   SELECT tc.student_id,
@@ -525,8 +551,8 @@ Apply the new schema with `alembic upgrade head` (revision `011_admin_course_man
 Seed script: `scripts/seed.py` (dev/staging only; never run in production).
 
 ## 8. Database Security
-- Enable **RLS on all tables** with **no policies** for `anon`/`authenticated` roles → direct Supabase client access is denied. Backend uses a dedicated DB role / service connection.
-- Service-role key and DB URL only in backend env.
+- The legacy SQL bootstrap enables RLS on the tables it defines; later Alembic revisions do not uniformly add RLS. In particular, revision `019_community_chat_e2ee` creates device and key-envelope tables without enabling RLS. Do not assume every current table is protected by RLS; verify policies and database roles in the deployed schema.
+- The browser does not connect directly to PostgreSQL/Supabase; application requests go through the API. `DATABASE_URL` and `SUPABASE_SERVICE_KEY` are backend-only. The repository does not establish that the configured database account is least-privileged.
 - Storage buckets private; PDFs/photos served via backend or short-lived signed URLs.
 - `is_correct` never selected in student-facing queries pre-submission.
 - Parameterized queries only (SQLAlchemy). No raw string SQL with user input.
