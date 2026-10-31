@@ -161,6 +161,26 @@ export function Shell({ role, name, demo, children }: { role: Role; name: string
           </Link>
         );
       })}
+      {role !== "admin" && (
+        <a
+          href={process.env.NEXT_PUBLIC_DISCORD_INVITE_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={collapsed ? "Join Discord" : undefined}
+          className={clsx(
+            "group flex h-11 items-center rounded-lg text-sm text-cream-100/90 transition-all duration-150 hover:bg-green-600 hover:text-cream-50",
+            collapsed ? "justify-center px-0" : "gap-3 px-3.5"
+          )}
+        >
+          <MessagesSquare
+            size={19}
+            strokeWidth={1.75}
+            className="text-cream-200/90 transition-transform duration-150 group-hover:scale-110 group-hover:text-cream-100"
+            aria-hidden
+          />
+          <span className={clsx("truncate", collapsed && "lg:hidden")}>Join Discord</span>
+        </a>
+      )}
     </nav>
   );
 
