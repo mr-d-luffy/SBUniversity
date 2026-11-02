@@ -421,3 +421,23 @@ button:not(:disabled):active { transform: scale(0.98); }
 }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+.notice-board-surface {
+  background-color: #fafaf8;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 2.95rem,
+    rgba(9, 42, 40, 0.055) 3rem
+  );
+}
+
+html.dark .notice-board-surface {
+  background-color: #141d18;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 2.95rem,
+    rgba(207, 227, 217, 0.055) 3rem
+  );
+}
