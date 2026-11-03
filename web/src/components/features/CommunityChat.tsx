@@ -155,6 +155,7 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
   const audioUrlsRef = useRef<Record<string, string>>({});
   const audioLoadingRef = useRef(new Set<string>());
   const keySyncingRef = useRef(new Set<string>());
+  const registeredChatDevicesRef = useRef(new Set<string>());
   const mountedRef = useRef(true);
   const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
   selectedConversationIdRef.current = selectedId;
@@ -294,13 +295,17 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
         chatUserIdRef.current = identityId;
         setChatUserId(identityId);
         const identity = await getOrCreateDeviceIdentity(identityId);
-        await api<ChatDevice>("/community-chat/devices", token ?? undefined, {
-          method: "POST",
-          body: JSON.stringify({
-            device_id: identity.deviceId,
-            public_key: identity.publicKey,
-          }),
-        });
+        const registrationId = `${identityId}:${identity.deviceId}`;
+        if (!registeredChatDevicesRef.current.has(registrationId)) {
+          await api<ChatDevice>("/community-chat/devices", token ?? undefined, {
+            method: "POST",
+            body: JSON.stringify({
+              device_id: identity.deviceId,
+              public_key: identity.publicKey,
+            }),
+          });
+          registeredChatDevicesRef.current.add(registrationId);
+        }
         const [devices, envelopes] = await Promise.all([
           api<ChatDevice[]>(
             `/community-chat/conversations/${conversationId}/devices`,
@@ -380,12 +385,17 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
     };
 
     void syncEncryption();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void syncEncryption();
+    };
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void syncEncryption();
-    }, 10000);
+    }, 60000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
       active = false;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [loadMessages, resolveToken, selectedId, userId]);
 
@@ -396,7 +406,7 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
     };
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void loadConversations();
-    }, 10000);
+    }, 30000);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
       window.clearInterval(timer);
@@ -419,7 +429,7 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
     };
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void loadMessages(selectedId);
-    }, 3000);
+    }, 5000);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
       window.clearInterval(timer);
@@ -570,8 +580,10 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
     setUploadingAudio(true);
     setError(null);
     try {
-      const token = await resolveToken();
-      const encryptedAudio = await encryptChatAudio(conversationId, encryptionKey, file);
+      const [token, encryptedAudio] = await Promise.all([
+        resolveToken(),
+        encryptChatAudio(conversationId, encryptionKey, file),
+      ]);
       const form = new FormData();
       form.append("file", encryptedAudio, "voice-message.enc");
       const mediaType = file.type.split(";")[0] || "audio/webm";
@@ -580,6 +592,11 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
         token ?? undefined,
         { method: "POST", body: form },
       );
+      if (mountedRef.current) {
+        const url = URL.createObjectURL(file);
+        audioUrlsRef.current[sentMessage.id] = url;
+        setAudioUrls((current) => ({ ...current, [sentMessage.id]: url }));
+      }
       acceptSentMessage(sentMessage);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Could not send voice message.");
@@ -610,7 +627,14 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
     }
     try {
       setError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
       recordingStreamRef.current = stream;
       const preferredType = [
         "audio/webm;codecs=opus",
@@ -620,7 +644,10 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
       ].find((type) => MediaRecorder.isTypeSupported(type));
       const recorder = new MediaRecorder(
         stream,
-        preferredType ? { mimeType: preferredType } : undefined,
+        {
+          ...(preferredType ? { mimeType: preferredType } : {}),
+          audioBitsPerSecond: 32_000,
+        },
       );
       recorderRef.current = recorder;
       recordingChunksRef.current = [];

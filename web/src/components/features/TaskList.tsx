@@ -326,7 +326,7 @@ export function TaskList({ initial }: { initial?: TaskItem[] }) {
                       Open learning resource
                     </a>
                   )}
-                  {t.resource_url && t.resource_type === "video" && status === "open" && (
+                  {t.resource_url && t.resource_type === "video" && (
                     <div className="mt-2">
                       <button
                         type="button"
@@ -336,20 +336,27 @@ export function TaskList({ initial }: { initial?: TaskItem[] }) {
                         className="inline-flex min-h-11 items-center gap-1.5 text-xs font-semibold text-green-700 hover:underline"
                       >
                         <Play size={13} />
-                        {activeVideoTaskId === t.id ? "Hide video" : "Watch video"}
+                        {activeVideoTaskId === t.id
+                          ? "Hide video"
+                          : status === "done"
+                            ? "Watch again"
+                            : "Watch video"}
                       </button>
                       {activeVideoTaskId === t.id && (
                         <YoutubeVideoTracker
                           videoUrl={t.resource_url}
                           initialProgress={t.my_video_progress ?? 0}
+                          trackProgress={status === "open"}
                           onProgress={(progress, duration) =>
                             reportVideoProgress(t.id, progress, duration)
                           }
                         />
                       )}
-                      <p className="mt-1 text-xs text-ink-muted">
-                        {Math.floor(t.my_video_progress ?? 0)}% watched · Watch at least 80% to submit.
-                      </p>
+                      {status === "open" && (
+                        <p className="mt-1 text-xs text-ink-muted">
+                          {Math.floor(t.my_video_progress ?? 0)}% watched · Watch at least 80% to submit.
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

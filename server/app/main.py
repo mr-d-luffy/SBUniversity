@@ -12,7 +12,9 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from redis.exceptions import RedisError
 from sqlalchemy import delete, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.v1.router import api_v1_router
 from app.core.config import settings
@@ -40,7 +42,7 @@ def should_record_request_telemetry(method: str, path: str) -> bool:
         return False
     if path.startswith("/api/v1/admin/security"):
         return False
-    if path in {"/api/v1/health", "/api/v1/health/"}:
+    if path in {"/health", "/health/", "/api/v1/health", "/api/v1/health/"}:
         return False
     return not any(pattern.fullmatch(path) for pattern in _HIGH_FREQUENCY_GET_PATHS)
 
@@ -118,6 +120,17 @@ async def periodic_security_event_retention_sweeper():
             logger.error("Exception in security event retention sweeper: %s", e)
 
 
+async def rebuild_leaderboard_on_startup():
+    try:
+        async with AsyncSessionLocal() as session:
+            await RankingService(session).rebuild_all_scores()
+    except (RedisError, SQLAlchemyError) as exc:
+        logger.warning(
+            "Initial leaderboard rebuild skipped or failed (DB may not be available): %s",
+            exc,
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -189,13 +202,8 @@ async def lifespan(app: FastAPI):
     # Initialize Redis connection
     await get_redis_client()
 
-    # Rebuild cold-start leaderboard if needed
-    try:
-        async with AsyncSessionLocal() as session:
-            ranking_svc = RankingService(session)
-            await ranking_svc.rebuild_all_scores()
-    except Exception as e:
-        logger.warning("Initial leaderboard rebuild skipped or failed (DB may not be migrated yet): %s", e)
+    # Do not keep the API unavailable while the optional database warm-up runs.
+    leaderboard_rebuild_task = asyncio.create_task(rebuild_leaderboard_on_startup())
 
     # Start background sweeper
     sweeper_task = asyncio.create_task(periodic_expired_attempts_sweeper())
@@ -210,12 +218,14 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    leaderboard_rebuild_task.cancel()
     sweeper_task.cancel()
     community_chat_sweeper_task.cancel()
     whiteboard_chat_sweeper_task.cancel()
     security_event_sweeper_task.cancel()
     await asyncio.gather(
         sweeper_task,
+        leaderboard_rebuild_task,
         community_chat_sweeper_task,
         whiteboard_chat_sweeper_task,
         security_event_sweeper_task,
@@ -272,17 +282,18 @@ async def security_headers(request: Request, call_next):
             except ValueError:
                 client_ip = None
             try:
-                async with AsyncSessionLocal() as telemetry_db:
-                    telemetry_db.add(SecurityRequestEvent(
-                        actor_id=getattr(request.state, "db_user_id", None),
-                        path=safe_path,
-                        method="GET",
-                        status_code=response.status_code if response is not None else 500,
-                        duration_ms=max(0, int((time.perf_counter() - started) * 1000)),
-                        client_ip=client_ip,
-                        user_agent=request.headers.get("user-agent", "")[:240] or None,
-                    ))
-                    await telemetry_db.commit()
+                async with asyncio.timeout(1):
+                    async with AsyncSessionLocal() as telemetry_db:
+                        telemetry_db.add(SecurityRequestEvent(
+                            actor_id=getattr(request.state, "db_user_id", None),
+                            path=safe_path,
+                            method="GET",
+                            status_code=response.status_code if response is not None else 500,
+                            duration_ms=max(0, int((time.perf_counter() - started) * 1000)),
+                            client_ip=client_ip,
+                            user_agent=request.headers.get("user-agent", "")[:240] or None,
+                        ))
+                        await telemetry_db.commit()
             except Exception as telemetry_error:
                 logger.warning("Security request telemetry write failed: %s", telemetry_error)
 

@@ -96,10 +96,12 @@ function watchedSeconds(ranges: WatchedRange[]): number {
 export function YoutubeVideoTracker({
   videoUrl,
   initialProgress,
+  trackProgress = true,
   onProgress,
 }: {
   videoUrl: string;
   initialProgress: number;
+  trackProgress?: boolean;
   onProgress: (progress: number, durationSeconds: number) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -127,7 +129,7 @@ export function YoutubeVideoTracker({
           playerVars: { origin: window.location.origin, rel: 0 },
           events: {
             onReady: () => {
-              if (!player) return;
+              if (!player || !trackProgress) return;
               timer = setInterval(() => {
                 if (!player || !window.YT || player.getPlayerState() !== window.YT.PlayerState.PLAYING) {
                   previousSampleRef.current = null;
@@ -178,7 +180,7 @@ export function YoutubeVideoTracker({
       if (timer) clearInterval(timer);
       player?.destroy();
     };
-  }, [videoId]);
+  }, [trackProgress, videoId]);
 
   if (!videoId) {
     return <p className="mt-3 text-sm text-danger">This video link is not a supported YouTube URL.</p>;
@@ -189,20 +191,24 @@ export function YoutubeVideoTracker({
       <div className="aspect-video w-full max-w-full overflow-hidden rounded-lg bg-black">
         <div ref={containerRef} className="h-full w-full" />
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-ink-muted">
-        <span>Watched progress</span>
-        <span>{Math.floor(progress)}% · 80% required</span>
-      </div>
-      <div
-        className="h-2 overflow-hidden rounded-full bg-cream-200"
-        role="progressbar"
-        aria-label="Video watched progress"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.floor(progress)}
-      >
-        <div className="h-full rounded-full bg-green-700 transition-[width]" style={{ width: `${progress}%` }} />
-      </div>
+      {trackProgress && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-ink-muted">
+            <span>Watched progress</span>
+            <span>{Math.floor(progress)}% · 80% required</span>
+          </div>
+          <div
+            className="h-2 overflow-hidden rounded-full bg-cream-200"
+            role="progressbar"
+            aria-label="Video watched progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.floor(progress)}
+          >
+            <div className="h-full rounded-full bg-green-700 transition-[width]" style={{ width: `${progress}%` }} />
+          </div>
+        </>
+      )}
       {error && <p className="break-words text-xs text-danger">{error}</p>}
     </div>
   );

@@ -116,6 +116,13 @@ with a 15-client limit, do not set `DB_POOL_SIZE=15` per worker; a practical
 starting point is `DB_POOL_SIZE=3` and `DB_MAX_OVERFLOW=0`, then tune against
 observed concurrency and the number of workers/instances.
 
+PostgreSQL connection attempts and pool checkouts are bounded to five seconds,
+and the initial leaderboard warm-up runs after the API starts accepting requests.
+If `/health` reports `database: disconnected`, verify that `DATABASE_URL` points
+to a reachable database. If a Supabase direct hostname does not resolve from
+your network, use the project's session-pooler connection string. Admin API
+requests still require a working database.
+
 ### 2. Supabase Migration
 
 #### New or Alembic-tracked database

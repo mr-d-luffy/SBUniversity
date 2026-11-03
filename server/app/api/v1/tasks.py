@@ -37,12 +37,17 @@ async def list_tasks(
     if current_user.role == UserRole.STUDENT:
         enrollments = await course_repo.list_student_enrollments(current_user.id)
         enrolled_ids = [e.course_id for e in enrollments if e.status == EnrollmentStatus.ACTIVE]
+        completed_only = False
         if course_id is not None and course_id not in enrolled_ids:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Course not found"
+            completed_only = await repo.student_has_completed_tasks_in_course(
+                current_user.id, course_id
             )
+            if not completed_only:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Course not found"
+                )
         filtered_tasks = await repo.list_student_tasks(
-            current_user.id, enrolled_ids, course_id
+            current_user.id, enrolled_ids, course_id, completed_only=completed_only
         )
 
         # Attach student's completion status
@@ -162,8 +167,14 @@ async def get_task_detail(
 
     if current_user.role == UserRole.STUDENT:
         service = TaskService(db)
-        if not await service.student_can_access_task(task, current_user.id):
+        completion = await repo.get_completion(task.id, current_user.id)
+        if (
+            not await service.student_can_access_task(task, current_user.id)
+            and (not completion or completion.status != CompletionStatus.COMPLETED)
+        ):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    else:
+        completion = None
 
     t_resp = TaskResponse.model_validate(task)
     t_resp.course_title = task.course.title if task.course else "Course"
@@ -174,11 +185,14 @@ async def get_task_detail(
         )).all())
 
     if current_user.role == UserRole.STUDENT:
-        comp = await repo.get_completion(task.id, current_user.id)
-        if comp:
-            t_resp.my_completion_id = comp.id
-            t_resp.my_status = comp.status
-            t_resp.points_earned = comp.points_awarded if comp.status == CompletionStatus.COMPLETED else 0
+        if completion:
+            t_resp.my_completion_id = completion.id
+            t_resp.my_status = completion.status
+            t_resp.points_earned = (
+                completion.points_awarded
+                if completion.status == CompletionStatus.COMPLETED
+                else 0
+            )
 
     return t_resp
 

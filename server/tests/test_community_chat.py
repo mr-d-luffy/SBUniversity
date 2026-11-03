@@ -13,6 +13,7 @@ from app.db.models import (
     CommunityConversation,
     CommunityMessage,
 )
+from app.repositories.community_chat_repository import CommunityChatRepository
 from app.services.storage_service import StorageService
 
 ENCRYPTED_CONTENT = "e2ee:v1:AAAA"
@@ -335,6 +336,7 @@ async def test_expired_conversations_and_messages_are_deleted(
         headers=auth("student-u_student1"),
     )
     assert messages.status_code == 404
+    assert await CommunityChatRepository(db_session).delete_expired() == 1
     db_session.expire_all()
     assert await db_session.get(CommunityConversation, conversation_id) is None
     stored_messages = (

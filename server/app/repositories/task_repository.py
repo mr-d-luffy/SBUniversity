@@ -66,33 +66,61 @@ class TaskRepository:
         student_id: uuid.UUID,
         course_ids: List[uuid.UUID],
         course_id: Optional[uuid.UUID] = None,
+        completed_only: bool = False,
     ) -> List[Task]:
+        completed_task_ids = select(TaskCompletion.task_id).where(
+            TaskCompletion.student_id == student_id,
+            TaskCompletion.status == CompletionStatus.COMPLETED,
+        )
         stmt = (
             select(Task)
             .options(selectinload(Task.course))
-            .where(
-                Task.status == TaskStatus.ACTIVE,
+        )
+        if completed_only:
+            stmt = stmt.where(Task.id.in_(completed_task_ids))
+        else:
+            stmt = stmt.where(
                 or_(
                     and_(
-                        Task.assignment_scope == TaskAssignmentScope.ALL_STUDENTS,
-                        Task.course_id.in_(course_ids),
+                        Task.status == TaskStatus.ACTIVE,
+                        or_(
+                            and_(
+                                Task.assignment_scope == TaskAssignmentScope.ALL_STUDENTS,
+                                Task.course_id.in_(course_ids),
+                            ),
+                            and_(
+                                Task.assignment_scope == TaskAssignmentScope.SELECTED_STUDENTS,
+                                Task.id.in_(
+                                    select(TaskRecipient.task_id).where(
+                                        TaskRecipient.student_id == student_id
+                                    )
+                                ),
+                            ),
+                        ),
                     ),
-                    and_(
-                        Task.assignment_scope == TaskAssignmentScope.SELECTED_STUDENTS,
-                        Task.id.in_(
-                            select(TaskRecipient.task_id).where(
-                                TaskRecipient.student_id == student_id
-                            )
-                        )
-                    ),
-                ),
+                    Task.id.in_(completed_task_ids),
+                )
             )
-        )
         if course_id:
             stmt = stmt.where(Task.course_id == course_id)
         stmt = stmt.order_by(Task.created_at.desc())
         res = await self.db.execute(stmt)
         return list(res.scalars().all())
+
+    async def student_has_completed_tasks_in_course(
+        self, student_id: uuid.UUID, course_id: uuid.UUID
+    ) -> bool:
+        stmt = (
+            select(TaskCompletion.id)
+            .join(Task, Task.id == TaskCompletion.task_id)
+            .where(
+                TaskCompletion.student_id == student_id,
+                TaskCompletion.status == CompletionStatus.COMPLETED,
+                Task.course_id == course_id,
+            )
+            .limit(1)
+        )
+        return (await self.db.execute(stmt)).scalar_one_or_none() is not None
 
     async def create(self, task: Task) -> Task:
         self.db.add(task)

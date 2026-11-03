@@ -164,9 +164,11 @@ Ranking is based on **Task Points** (see `PRD.md` §7.9, §7.13 and `database.md
 - Use **revoke** (status change + audit log) to remove points; never delete `task_completions` rows.
 - Serve the leaderboard from Redis; fall back to the SQL in `database.md` when Redis is empty or unavailable. Rebuild overall scores from DB at startup and refresh them on score-changing events.
 - Enforce ownership: teachers create/approve tasks only for their **own courses**.
+- Keep each student's completed tasks and their linked learning resources available in that student's history even after a task is archived or course enrollment ends.
 
 **DON'T**
 - Don't accept or trust points from the client, query string, or webhook payloads.
+- Don't expose an archived task or its resources to a student without that student's completed completion record.
 - Don't use exam marks, `results.rank_in_exam`, or any other source for the Live Ranking.
 - Don't use `ZINCRBY` for ranking (it can drift); always recompute and set.
 - Don't let students approve/complete assignment tasks without teacher approval.

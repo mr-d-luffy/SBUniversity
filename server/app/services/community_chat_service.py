@@ -291,7 +291,6 @@ class CommunityChatService:
     async def list_messages(
         self, user: User, conversation_id: uuid.UUID
     ) -> List[CommunityMessageResponse]:
-        await self.cleanup_expired()
         conversation = await self._get_accessible_conversation(user, conversation_id)
         rows = await self.repo.list_messages(conversation.id)
         return [
@@ -407,6 +406,11 @@ class CommunityChatService:
     ) -> CommunityConversation:
         conversation = await self.repo.get_accessible_conversation(conversation_id)
         if not conversation or not self._can_access(user, conversation):
+            raise HTTPException(status_code=404, detail="Chat conversation not found")
+        expires_at = conversation.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at <= datetime.now(timezone.utc):
             raise HTTPException(status_code=404, detail="Chat conversation not found")
         return conversation
 

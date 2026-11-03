@@ -1,13 +1,18 @@
+from datetime import datetime, timezone
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
+    CompletionStatus,
     Course,
     Enrollment,
     EnrollmentStatus,
     Task,
     TaskAssignmentScope,
+    TaskCompletion,
+    TaskResourceType,
     TaskStatus,
     TaskType,
     TaskVerification,
@@ -114,3 +119,82 @@ async def test_student_cannot_fetch_tasks_for_unenrolled_course(
     )
 
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_student_keeps_access_to_own_completed_archived_course_task(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    student = db_session.test_student1
+    course = Course(
+        code="TASK-HISTORY",
+        title="Task History",
+        teacher_id=db_session.test_teacher.id,
+        is_published=True,
+    )
+    db_session.add(course)
+    await db_session.flush()
+    db_session.add(
+        Enrollment(
+            student_id=student.id,
+            course_id=course.id,
+            status=EnrollmentStatus.DROPPED,
+        )
+    )
+    completed_task = Task(
+        course_id=course.id,
+        created_by=db_session.test_teacher.id,
+        type=TaskType.ASSIGNMENT,
+        title="Completed video task",
+        points=12,
+        verification=TaskVerification.TEACHER_APPROVAL,
+        resource_type=TaskResourceType.VIDEO,
+        resource_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        assignment_scope=TaskAssignmentScope.ALL_STUDENTS,
+        status=TaskStatus.ARCHIVED,
+    )
+    uncompleted_task = Task(
+        course_id=course.id,
+        created_by=db_session.test_teacher.id,
+        type=TaskType.ASSIGNMENT,
+        title="Archived task without completion",
+        points=5,
+        verification=TaskVerification.TEACHER_APPROVAL,
+        assignment_scope=TaskAssignmentScope.ALL_STUDENTS,
+        status=TaskStatus.ARCHIVED,
+    )
+    db_session.add_all([completed_task, uncompleted_task])
+    await db_session.flush()
+    completed_at = datetime.now(timezone.utc)
+    db_session.add(
+        TaskCompletion(
+            task_id=completed_task.id,
+            student_id=student.id,
+            status=CompletionStatus.COMPLETED,
+            points_awarded=12,
+            submitted_at=completed_at,
+            completed_at=completed_at,
+        )
+    )
+    await db_session.commit()
+
+    headers = {"Authorization": "Bearer dev-token-student-u_student1"}
+    course_tasks = await client.get(
+        f"/tasks?course_id={course.id}",
+        headers=headers,
+    )
+    assert course_tasks.status_code == 200
+    assert [task["id"] for task in course_tasks.json()] == [str(completed_task.id)]
+    assert course_tasks.json()[0]["resource_url"] == completed_task.resource_url
+    assert course_tasks.json()[0]["my_status"] == CompletionStatus.COMPLETED.value
+
+    task_detail = await client.get(f"/tasks/{completed_task.id}", headers=headers)
+    assert task_detail.status_code == 200
+    assert task_detail.json()["resource_url"] == completed_task.resource_url
+
+    another_student_detail = await client.get(
+        f"/tasks/{completed_task.id}",
+        headers={"Authorization": "Bearer dev-token-student-u_student2"},
+    )
+    assert another_student_detail.status_code == 404

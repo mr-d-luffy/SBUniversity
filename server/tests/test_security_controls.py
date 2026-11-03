@@ -36,6 +36,11 @@ def test_high_frequency_polling_is_not_written_to_request_telemetry(path: str):
     assert not should_record_request_telemetry("GET", path)
 
 
+def test_health_checks_are_not_written_to_request_telemetry():
+    assert not should_record_request_telemetry("GET", "/health")
+    assert not should_record_request_telemetry("GET", "/api/v1/health")
+
+
 def test_non_polling_gets_remain_in_request_telemetry():
     assert should_record_request_telemetry("GET", "/api/v1/community-chat/students")
     assert should_record_request_telemetry("GET", "/api/v1/whiteboard/courses")
