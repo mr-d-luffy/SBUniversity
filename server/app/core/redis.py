@@ -1,7 +1,6 @@
 import asyncio
-import json
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 import redis.asyncio as aioredis
 from app.core.config import settings
 from app.core.logging import logger
@@ -160,6 +159,6 @@ async def close_redis_client():
     if redis_client is not None:
         try:
             await redis_client.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Redis client shutdown failed: %s", exc)
         redis_client = None

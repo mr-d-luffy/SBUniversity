@@ -66,7 +66,7 @@ class CertificateService:
             .where(
                 Result.student_id == student_id,
                 Exam.course_id == course_id,
-                Result.passed == True,
+                Result.passed,
             )
         )
         avg_res = await self.db.execute(stmt_scores)

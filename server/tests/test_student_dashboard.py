@@ -8,6 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import (
     CompletionStatus,
     Course,
+    CourseKeyRequest,
+    CourseKeyRequestStatus,
+    CourseUnlock,
     Enrollment,
     EnrollmentStatus,
     Task,
@@ -37,6 +40,20 @@ async def test_dashboard_batches_task_completion_status_lookups(
             student_id=db_session.test_student1.id,
             course_id=course.id,
             status=EnrollmentStatus.ACTIVE,
+        )
+    )
+    key_request = CourseKeyRequest(
+        student_id=db_session.test_student1.id,
+        course_id=course.id,
+        status=CourseKeyRequestStatus.ACTIVATED,
+    )
+    db_session.add(key_request)
+    await db_session.flush()
+    db_session.add(
+        CourseUnlock(
+            student_id=db_session.test_student1.id,
+            course_id=course.id,
+            request_id=key_request.id,
         )
     )
 

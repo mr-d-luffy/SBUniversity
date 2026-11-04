@@ -1,11 +1,16 @@
 import uuid
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.deps import get_current_user, require_role
-from app.db.models.course import Course, CourseTeacher, Enrollment, EnrollmentStatus
-from app.db.models.task import CompletionStatus, Task, TaskCompletion, TaskRecipient, TaskStatus
+from app.db.models.course import Course, CourseTeacher, EnrollmentStatus
+from app.db.models.task import (
+    CompletionStatus,
+    TaskRecipient,
+)
 from app.db.models.user import User, UserRole
 from app.db.session import get_db
 from app.repositories.course_repository import CourseRepository
@@ -16,10 +21,11 @@ from app.schemas.task import (
     TaskCreate,
     TaskResponse,
     TaskReviewRequest,
+    TaskUpdate,
     TaskVideoProgressRequest,
     TaskVideoProgressResponse,
-    TaskUpdate,
 )
+from app.services.course_access_service import is_course_unlocked, unlocked_course_ids
 from app.services.task_service import TaskService
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
@@ -36,8 +42,17 @@ async def list_tasks(
 
     if current_user.role == UserRole.STUDENT:
         enrollments = await course_repo.list_student_enrollments(current_user.id)
-        enrolled_ids = [e.course_id for e in enrollments if e.status == EnrollmentStatus.ACTIVE]
+        unlocked_ids = await unlocked_course_ids(db, current_user.id)
+        enrolled_ids = [
+            e.course_id
+            for e in enrollments
+            if e.status == EnrollmentStatus.ACTIVE and e.course_id in unlocked_ids
+        ]
         completed_only = False
+        if course_id is not None and course_id not in unlocked_ids:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Course not found"
+            )
         if course_id is not None and course_id not in enrolled_ids:
             completed_only = await repo.student_has_completed_tasks_in_course(
                 current_user.id, course_id
@@ -49,6 +64,9 @@ async def list_tasks(
         filtered_tasks = await repo.list_student_tasks(
             current_user.id, enrolled_ids, course_id, completed_only=completed_only
         )
+        filtered_tasks = [
+            task for task in filtered_tasks if task.course_id in unlocked_ids
+        ]
 
         # Attach student's completion status
         completions = await repo.list_student_completions(current_user.id)
@@ -169,8 +187,11 @@ async def get_task_detail(
         service = TaskService(db)
         completion = await repo.get_completion(task.id, current_user.id)
         if (
-            not await service.student_can_access_task(task, current_user.id)
+            not await is_course_unlocked(db, current_user.id, task.course_id)
+            or (
+                not await service.student_can_access_task(task, current_user.id)
             and (not completion or completion.status != CompletionStatus.COMPLETED)
+            )
         ):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     else:

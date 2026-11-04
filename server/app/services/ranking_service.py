@@ -1,11 +1,13 @@
 import json
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional, Tuple
+from typing import List, Optional
+
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.logging import logger
 from app.core.redis import get_redis_client
-from app.db.models.user import User, UserStatus
+from app.db.models.user import UserStatus
 from app.repositories.task_repository import TaskRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.ranking import LeaderboardResponse, MyRankResponse, RankedStudentItem
@@ -72,8 +74,38 @@ class RankingService:
         course_id: Optional[uuid.UUID] = None,
         limit: int = 4,
     ) -> LeaderboardResponse:
+        if scope == "course" and course_id:
+            db_top = await self.task_repo.get_top_students_sql(
+                course_id=course_id,
+                limit=limit,
+            )
+            items = [
+                RankedStudentItem(
+                    rank=rank,
+                    student_id=student_id,
+                    name=name,
+                    avatar_url=avatar,
+                    points=int(points),
+                    tasks_completed=int(tasks_completed),
+                )
+                for rank, (
+                    student_id,
+                    name,
+                    avatar,
+                    points,
+                    tasks_completed,
+                    _,
+                ) in enumerate(db_top, start=1)
+            ]
+            return LeaderboardResponse(
+                updated_at=datetime.now(timezone.utc),
+                scope=scope,
+                course_id=course_id,
+                items=items,
+            )
+
         redis = await get_redis_client()
-        key = REDIS_KEY_LB_OVERALL if scope == "overall" or not course_id else f"lb:course:{course_id}"
+        key = REDIS_KEY_LB_OVERALL
 
         # Fetch top members from Redis
         try:
@@ -85,29 +117,42 @@ class RankingService:
         items: List[RankedStudentItem] = []
 
         if top_member_ids:
+            member_ids = []
+            for m_id in top_member_ids:
+                try:
+                    member_ids.append(uuid.UUID(str(m_id)))
+                except ValueError:
+                    logger.warning(
+                        "Skipping invalid student ID in leaderboard: %s", m_id
+                    )
+
+            summaries = await self.task_repo.get_student_points_summaries(member_ids)
             for rank_idx, m_id in enumerate(top_member_ids, start=1):
                 try:
-                    s_uuid = uuid.UUID(m_id)
-                    user = await self.user_repo.get_by_id(s_uuid)
-                    if user and user.status == UserStatus.ACTIVE:
-                        total_pts, tasks_cnt, _ = await self.task_repo.get_student_points_summary(s_uuid)
-                        if total_pts > 0:
-                            items.append(
-                                RankedStudentItem(
-                                    rank=rank_idx,
-                                    student_id=user.id,
-                                    name=user.full_name,
-                                    avatar_url=user.avatar_url,
-                                    points=total_pts,
-                                    tasks_completed=tasks_cnt,
-                                )
-                            )
-                except Exception:
+                    student_id = uuid.UUID(str(m_id))
+                except ValueError:
                     continue
+                summary = summaries.get(student_id)
+                if summary:
+                    name, avatar, points, tasks_completed = summary
+                    if points > 0:
+                        items.append(
+                            RankedStudentItem(
+                                rank=rank_idx,
+                                student_id=student_id,
+                                name=name,
+                                avatar_url=avatar,
+                                points=points,
+                                tasks_completed=tasks_completed,
+                            )
+                        )
 
         # If Redis was empty or cold, fall back to SQL and seed Redis
         if not items:
-            db_top = await self.task_repo.get_top_students_sql(course_id=course_id, limit=limit)
+            db_top = await self.task_repo.get_top_students_sql(
+                course_id=course_id, limit=limit
+            )
+            redis_scores = {}
             for rank_idx, (s_id, name, avatar, pts, cnt, last_comp) in enumerate(db_top, start=1):
                 items.append(
                     RankedStudentItem(
@@ -119,11 +164,12 @@ class RankingService:
                         tasks_completed=int(cnt),
                     )
                 )
-                score = compute_leaderboard_score(int(pts), last_comp)
+                redis_scores[str(s_id)] = compute_leaderboard_score(int(pts), last_comp)
+            if redis_scores:
                 try:
-                    await redis.zadd(key, {str(s_id): score})
-                except Exception:
-                    pass
+                    await redis.zadd(key, redis_scores)
+                except Exception as e:
+                    logger.warning("Redis leaderboard seed failed: %s", e)
 
         return LeaderboardResponse(
             updated_at=datetime.now(timezone.utc),
@@ -138,10 +184,29 @@ class RankingService:
         scope: str = "overall",
         course_id: Optional[uuid.UUID] = None,
     ) -> MyRankResponse:
+        if scope == "course" and course_id:
+            ranking = await self.task_repo.get_student_ranking_summary(
+                student_id, course_id
+            )
+            if ranking is None:
+                return MyRankResponse(
+                    student_id=student_id,
+                    rank=None,
+                    points=0,
+                    tasks_completed=0,
+                )
+            rank, points, tasks_completed = ranking
+            return MyRankResponse(
+                student_id=student_id,
+                rank=rank,
+                points=points,
+                tasks_completed=tasks_completed,
+            )
+
         redis = await get_redis_client()
         key = REDIS_KEY_LB_OVERALL if scope == "overall" or not course_id else f"lb:course:{course_id}"
 
-        total_pts, tasks_cnt, last_comp = await self.task_repo.get_student_points_summary(student_id)
+        total_pts, tasks_cnt, _ = await self.task_repo.get_student_points_summary(student_id)
         if total_pts <= 0:
             return MyRankResponse(student_id=student_id, rank=None, points=0, tasks_completed=0)
 
@@ -150,8 +215,8 @@ class RankingService:
             zrank = await redis.zrevrank(key, str(student_id))
             if zrank is not None:
                 rank_val = zrank + 1
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Redis student-rank lookup failed: %s", exc)
 
         return MyRankResponse(
             student_id=student_id,
@@ -164,10 +229,11 @@ class RankingService:
         """Cold-start rebuild or nightly reconciliation of Redis leaderboard."""
         db_top = await self.task_repo.get_top_students_sql(limit=5000)
         redis = await get_redis_client()
-        count = 0
+        redis_scores = {}
         for s_id, _, _, pts, _, last_comp in db_top:
-            score = compute_leaderboard_score(int(pts), last_comp)
-            await redis.zadd(REDIS_KEY_LB_OVERALL, {str(s_id): score})
-            count += 1
+            redis_scores[str(s_id)] = compute_leaderboard_score(int(pts), last_comp)
+        if redis_scores:
+            await redis.zadd(REDIS_KEY_LB_OVERALL, redis_scores)
+        count = len(redis_scores)
         logger.info("Rebuilt Redis leaderboard for %d students", count)
         return count

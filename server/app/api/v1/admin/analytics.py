@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import require_role
+from app.core.logging import logger
 from app.db.models.user import UserRole
 from app.db.session import get_db
 from app.schemas.analytics import OverviewAnalyticsResponse, StudentAnalyticsItem, TeacherAnalyticsItem
@@ -43,7 +44,8 @@ async def stream_live_analytics(db: AsyncSession = Depends(get_db)):
                 await asyncio.sleep(5)
             except asyncio.CancelledError:
                 break
-            except Exception:
+            except Exception as exc:
+                logger.error("Admin analytics stream failed: %s", exc)
                 await asyncio.sleep(5)
 
     return StreamingResponse(

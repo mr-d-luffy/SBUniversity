@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   Clock3,
   LoaderCircle,
+  LifeBuoy,
   Mic,
   MessageCircle,
   MessagesSquare,
@@ -827,7 +828,8 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
                   onClick={() => void startStaffChat("admin")}
                   className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-cream-300 bg-cream-50 px-2 text-xs font-semibold text-green-900 transition hover:bg-cream-100 disabled:opacity-50"
                 >
-                  <ShieldCheck size={15} /> Admin
+                  {isStudent ? <LifeBuoy size={15} /> : <ShieldCheck size={15} />}
+                  {isStudent ? "Help & Support" : "Admin"}
                 </button>
                 {isStudent && (
                   <button
@@ -982,7 +984,7 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
                   </p>
                 </div>
                 <span className="hidden items-center gap-1 text-[11px] text-ink-muted sm:flex">
-                  <Clock3 size={13} /> Clears 10 hours after latest message
+                  <Clock3 size={13} /> Clears 48 hours after latest message
                 </span>
                 <span
                   title={encryptionReadyFor === selectedId
@@ -1019,8 +1021,8 @@ export function CommunityChat({ role }: { role: "student" | "teacher" | "admin" 
                     </span>
                     <p className="mt-3 font-semibold text-green-900">Start the conversation</p>
                     <p className="mt-1 text-xs leading-relaxed text-ink-muted">
-                      Send a message. This chat and its messages are automatically cleared after
-                      10 hours without new activity.
+                      Message history and chat keys are removed after 48 hours without new
+                      activity. Uploaded voice files may follow separate storage retention.
                     </p>
                   </div>
                 )}

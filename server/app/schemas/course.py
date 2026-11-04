@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 from app.db.models.course import EnrollmentStatus
@@ -12,6 +13,8 @@ class CourseCreate(BaseModel):
     department_id: Optional[uuid.UUID] = None
     teacher_id: Optional[uuid.UUID] = None  # Admin can specify, teacher defaults to self
     is_published: bool = False
+    price: Decimal = Field(default=Decimal("0.00"), ge=0, decimal_places=2)
+    discount_percent: int = Field(default=0, ge=0, le=100)
 
 
 class CourseUpdate(BaseModel):
@@ -20,6 +23,8 @@ class CourseUpdate(BaseModel):
     department_id: Optional[uuid.UUID] = None
     teacher_id: Optional[uuid.UUID] = None
     is_published: Optional[bool] = None
+    price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
+    discount_percent: Optional[int] = Field(default=None, ge=0, le=100)
 
 
 class CourseResponse(BaseModel):
@@ -31,6 +36,8 @@ class CourseResponse(BaseModel):
     department_id: Optional[uuid.UUID] = None
     teacher_id: uuid.UUID
     is_published: bool
+    price: float
+    discount_percent: int
     created_at: datetime
     updated_at: datetime
 
@@ -62,6 +69,8 @@ class AdminCourseCreate(BaseModel):
     student_ids: list[uuid.UUID] = Field(default_factory=list)
     is_published: bool = True
     enroll_all_active_students: bool = True
+    price: Decimal = Field(default=Decimal("0.00"), ge=0, decimal_places=2)
+    discount_percent: int = Field(default=0, ge=0, le=100)
 
 
 class AdminCourseUpdate(BaseModel):
@@ -73,6 +82,8 @@ class AdminCourseUpdate(BaseModel):
     student_ids: Optional[list[uuid.UUID]] = None
     is_published: Optional[bool] = None
     enroll_all_active_students: Optional[bool] = None
+    price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
+    discount_percent: Optional[int] = Field(default=None, ge=0, le=100)
 
 
 class AdminCourseResponse(CourseResponse):
@@ -96,3 +107,29 @@ class AdminStudentResponse(BaseModel):
 
 class AdminCourseTeacherUpdate(BaseModel):
     teacher_id: uuid.UUID
+
+
+class CoursePricingUpdate(BaseModel):
+    price: Decimal = Field(ge=0, decimal_places=2)
+    discount_percent: int = Field(ge=0, le=100)
+
+
+class CourseKeyActivationRequest(BaseModel):
+    key: str = Field(pattern=r"^SB-[A-Z2-9]{5}-[A-Z2-9]{5}$")
+
+
+class StudentCourseKeyRequestResponse(BaseModel):
+    id: uuid.UUID
+    course_id: uuid.UUID
+    course_title: str
+    status: str
+    requested_at: datetime
+    reviewed_at: Optional[datetime] = None
+    activated_at: Optional[datetime] = None
+
+
+class AdminCourseKeyRequestResponse(StudentCourseKeyRequestResponse):
+    student_id: uuid.UUID
+    student_name: str
+    student_email: str
+    access_key: Optional[str] = None

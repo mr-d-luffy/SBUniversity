@@ -17,7 +17,7 @@
 - Admin user controls include role assignment, status changes, permanent deletion workflow, and course management with teacher/student assignment.
 - Permanent account deletion removes the Clerk identity first and then the application record; authored records remain usable with a cleared author reference when required by policy.
 - Course-scoped live whiteboard sessions persist strokes while expiring live messages after ten minutes.
-- Community Chat encrypts text/audio in the browser using WebCrypto; device and conversation keys persist in IndexedDB without a TTL. Conversation/message database rows and envelopes expire 10 hours after the latest message; uploaded audio objects are outside that database cleanup.
+- Community Chat provides Help & Support and encrypts text/audio in the browser using WebCrypto; device and conversation keys persist in IndexedDB without a TTL. Conversation/message database rows and envelopes expire 48 hours after the latest message; uploaded audio objects are outside that database cleanup.
 - A student-scoped Flutter Android client foundation exists, but it is not feature-complete or production-ready ([`mobile/README.md`](../mobile/README.md)).
 - Aarsh Intelligence and the public credential verification flow are implemented in the UI and backend.
 
@@ -41,9 +41,10 @@
 | Teacher protection | A teacher assigned to a course cannot be demoted or deleted until reassigned. |
 | Multiple course teachers | `course_teachers` is authoritative for additional assignments; `courses.teacher_id` remains primary for compatibility. |
 | Whiteboard history | Strokes remain for session history; live class chat expires after ten minutes. |
-| Community Chat | Text/audio payloads are encrypted client-side. Browser keys have no TTL; conversation history and server key envelopes are cleaned after 10 hours of inactivity. Audio object cleanup needs separate storage retention. |
+| Community Chat | Text/audio payloads are encrypted client-side. Browser keys have no TTL; conversation history and server key envelopes are cleaned after 48 hours of inactivity. Audio object cleanup needs separate storage retention. |
 
 ## Recent Changes
+- 2026-11-04: Added Help & Support to Community Chat and extended inactive conversation/message database retention to 48 hours.
 - 2026-10-31: Added Community Chat end-to-end encryption support and migration `019_community_chat_e2ee`; database cleanup removes expired conversation history and key envelopes after 10 hours of inactivity.
 
 ## Remaining Work

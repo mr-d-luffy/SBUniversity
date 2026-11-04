@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from pathlib import PurePosixPath
 from typing import Optional
@@ -42,7 +43,7 @@ class StorageService:
         if supabase_client:
             try:
                 bucket = settings.SUPABASE_STORAGE_BUCKET
-                res = supabase_client.storage.from_(bucket).upload(
+                supabase_client.storage.from_(bucket).upload(
                     path=path,
                     file=content,
                     file_options={"content-type": content_type, "upsert": "true"},
@@ -58,9 +59,8 @@ class StorageService:
             raise RuntimeError("Supabase Storage is required in production")
 
         local_path = _local_storage_path(path)
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(local_path, "wb") as f:
-            f.write(content)
+        await asyncio.to_thread(local_path.parent.mkdir, parents=True, exist_ok=True)
+        await asyncio.to_thread(local_path.write_bytes, content)
         return str(local_path.resolve())
 
     @staticmethod
@@ -80,11 +80,10 @@ class StorageService:
 
         if settings.is_production:
             raise RuntimeError("Supabase Storage is required in production")
-        if local_path.exists():
-            with open(local_path, "rb") as f:
-                return f.read()
-
-        return None
+        try:
+            return await asyncio.to_thread(local_path.read_bytes)
+        except FileNotFoundError:
+            return None
 
     @staticmethod
     async def delete_file(path: str) -> None:

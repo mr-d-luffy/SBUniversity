@@ -13,7 +13,10 @@ from app.db.models import (
     CommunityConversation,
     CommunityMessage,
 )
-from app.repositories.community_chat_repository import CommunityChatRepository
+from app.repositories.community_chat_repository import (
+    COMMUNITY_CHAT_LIFETIME,
+    CommunityChatRepository,
+)
 from app.services.storage_service import StorageService
 
 ENCRYPTED_CONTENT = "e2ee:v1:AAAA"
@@ -266,6 +269,7 @@ async def test_staff_buttons_create_role_scoped_support_inboxes(
     assert admin_thread.status_code == 200
     assert teacher_thread.status_code == 200
     assert admin_thread.json()["kind"] == "admin_support"
+    assert admin_thread.json()["title"] == "Help & Support"
     assert teacher_thread.json()["kind"] == "teacher_support"
     assert admin_thread.json()["id"] != teacher_thread.json()["id"]
 
@@ -281,6 +285,21 @@ async def test_staff_buttons_create_role_scoped_support_inboxes(
         headers=student,
     )
     assert message.status_code == 200
+    conversation = await db_session.get(
+        CommunityConversation, uuid.UUID(admin_thread.json()["id"])
+    )
+    assert conversation is not None
+    message_created_at = message.json()["created_at"]
+    message_created_at = datetime.fromisoformat(
+        message_created_at.replace("Z", "+00:00")
+    )
+    if message_created_at.tzinfo is None:
+        message_created_at = message_created_at.replace(tzinfo=timezone.utc)
+    expires_at = conversation.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    assert expires_at - message_created_at == COMMUNITY_CHAT_LIFETIME
+    assert COMMUNITY_CHAT_LIFETIME == timedelta(hours=48)
 
     admin_inbox = await client.get("/community-chat/conversations", headers=admin)
     teacher_inbox = await client.get("/community-chat/conversations", headers=teacher)

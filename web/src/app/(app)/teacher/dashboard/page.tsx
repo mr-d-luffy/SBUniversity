@@ -14,14 +14,21 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, StatCard } from "@/components/ui/Card";
-import { Badge, PointsChip } from "@/components/ui/Badge";
+import { PointsChip } from "@/components/ui/Badge";
 import { api, getDevAuthToken } from "@/lib/api";
 import LearningStreak from "@/components/features/LearningStreak";
 import StudyTimeChart from "@/components/features/StudyTimeChart";
 import { ActivityDataProvider } from "@/components/features/ActivityDataProvider";
 
 interface TeacherDashboardResponse {
-  my_courses: { id: string; code: string; title: string; is_published: boolean }[];
+  my_courses: {
+    id: string;
+    code: string;
+    title: string;
+    is_published: boolean;
+    price: number;
+    discount_percent: number;
+  }[];
   total_exams: number;
   total_submissions: number;
   average_score: number;
@@ -51,6 +58,9 @@ export default function TeacherDashboard() {
   const [data, setData] = useState<TeacherDashboardResponse | null>(null);
   const [exams, setExams] = useState<TeacherExamItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pricingDrafts, setPricingDrafts] = useState<Record<string, { price: string; discount: string }>>({});
+  const [pricingError, setPricingError] = useState("");
+  const [savingPriceFor, setSavingPriceFor] = useState("");
 
   const resolveToken = useCallback(async () => {
     let token = await getToken();
@@ -69,7 +79,13 @@ export default function TeacherDashboard() {
         api<TeacherExamItem[]>("/exams", token ?? undefined).catch(() => []),
       ]);
 
-      if (dashRes) setData(dashRes);
+      if (dashRes) {
+        setData(dashRes);
+        setPricingDrafts(Object.fromEntries(dashRes.my_courses.map((course) => [
+          course.id,
+          { price: String(course.price), discount: String(course.discount_percent) },
+        ])));
+      }
       if (examsRes) setExams(examsRes);
     } catch (err) {
       console.error("Failed to load teacher dashboard:", err);
@@ -86,6 +102,44 @@ export default function TeacherDashboard() {
   const examsCount = data?.total_exams ?? exams.length;
   const pendingApprovals = data?.pending_task_approvals ?? 0;
   const passRate = data?.pass_rate ?? 0;
+
+  async function saveCoursePricing(courseId: string) {
+    const draft = pricingDrafts[courseId];
+    if (!draft) return;
+    setSavingPriceFor(courseId);
+    setPricingError("");
+    try {
+      const token = await resolveToken();
+      const updated = await api<{ price: number; discount_percent: number }>(
+        `/teacher/courses/${courseId}/pricing`,
+        token ?? undefined,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            price: Number(draft.price),
+            discount_percent: Number(draft.discount),
+          }),
+        },
+      );
+      setData((current) => current && ({
+        ...current,
+        my_courses: current.my_courses.map((course) => course.id === courseId
+          ? { ...course, price: updated.price, discount_percent: updated.discount_percent }
+          : course),
+      }));
+      setPricingDrafts((current) => ({
+        ...current,
+        [courseId]: {
+          price: String(updated.price),
+          discount: String(updated.discount_percent),
+        },
+      }));
+    } catch (error) {
+      setPricingError(error instanceof Error ? error.message : "Could not update course pricing.");
+    } finally {
+      setSavingPriceFor("");
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -236,18 +290,66 @@ export default function TeacherDashboard() {
             ) : (
               <div className="space-y-3">
                 {data?.my_courses?.map((c) => (
-                  <div key={c.id} className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg bg-cream-50 p-3">
+                  <div key={c.id} className="space-y-3 rounded-lg bg-cream-50 p-3">
                     <div className="min-w-0">
                       <p className="break-words text-sm font-semibold text-green-900">{c.code} – {c.title}</p>
                       <span className="text-[10px] text-ink-muted">
                         Status: {c.is_published ? "Published & Enrolled" : "Draft"}
                       </span>
                     </div>
-                    <Badge tone="success">Active</Badge>
+                    <form
+                      className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void saveCoursePricing(c.id);
+                      }}
+                    >
+                      <label className="text-xs font-semibold text-green-900">
+                        Price
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          required
+                          value={pricingDrafts[c.id]?.price ?? String(c.price)}
+                          onChange={(event) => setPricingDrafts((current) => ({
+                            ...current,
+                            [c.id]: {
+                              price: event.target.value,
+                              discount: current[c.id]?.discount ?? String(c.discount_percent),
+                            },
+                          }))}
+                          className="mt-1 h-10 w-full rounded-lg border border-cream-300 bg-white px-2 text-sm font-normal"
+                        />
+                      </label>
+                      <label className="text-xs font-semibold text-green-900">
+                        Discount %
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="1"
+                          required
+                          value={pricingDrafts[c.id]?.discount ?? String(c.discount_percent)}
+                          onChange={(event) => setPricingDrafts((current) => ({
+                            ...current,
+                            [c.id]: {
+                              price: current[c.id]?.price ?? String(c.price),
+                              discount: event.target.value,
+                            },
+                          }))}
+                          className="mt-1 h-10 w-full rounded-lg border border-cream-300 bg-white px-2 text-sm font-normal"
+                        />
+                      </label>
+                      <Button type="submit" variant="secondary" size="sm" className="self-end" disabled={savingPriceFor === c.id}>
+                        {savingPriceFor === c.id ? "Saving…" : "Save price"}
+                      </Button>
+                    </form>
                   </div>
                 ))}
               </div>
             )}
+            {pricingError && <p role="alert" className="mt-3 text-xs text-danger">{pricingError}</p>}
           </Card>
         </div>
       </div>

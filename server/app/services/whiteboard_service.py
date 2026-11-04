@@ -10,6 +10,7 @@ from app.db.models.whiteboard import (
     WhiteboardStroke,
 )
 from app.repositories.whiteboard_repository import WhiteboardRepository
+from app.services.course_access_service import is_course_unlocked, unlocked_course_ids
 from app.schemas.whiteboard import (
     WhiteboardCourseResponse,
     WhiteboardMessageResponse,
@@ -27,6 +28,9 @@ class WhiteboardService:
 
     async def list_courses(self, user: User) -> list[WhiteboardCourseResponse]:
         courses = await self.repo.list_courses(user)
+        if user.role == UserRole.STUDENT:
+            unlocked_ids = await unlocked_course_ids(self.repo.db, user.id)
+            courses = [row for row in courses if row[0].id in unlocked_ids]
         return [
             WhiteboardCourseResponse(
                 id=course.id,
@@ -132,6 +136,10 @@ class WhiteboardService:
         course = await self.repo.get_course(course_id)
         if course is None or not await self.repo.can_access_course(user, course):
             raise HTTPException(status_code=404, detail="Course not found")
+        if user.role == UserRole.STUDENT and not await is_course_unlocked(
+            self.repo.db, user.id, course_id
+        ):
+            raise HTTPException(status_code=404, detail="Course not found")
         return course
 
     async def _get_controller_course(self, user: User, course_id: uuid.UUID) -> Course:
@@ -176,6 +184,13 @@ class WhiteboardService:
             )
         course = await self.repo.get_course(session.course_id)
         if course is None or not await self.repo.can_access_course(user, course):
+            raise HTTPException(
+                status_code=403,
+                detail="You are not a member of this live class",
+            )
+        if user.role == UserRole.STUDENT and not await is_course_unlocked(
+            self.repo.db, user.id, course.id
+        ):
             raise HTTPException(
                 status_code=403,
                 detail="You are not a member of this live class",

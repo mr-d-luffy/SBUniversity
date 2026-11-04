@@ -14,6 +14,7 @@ from app.repositories.course_repository import CourseRepository
 from app.repositories.result_repository import ResultRepository
 from app.schemas.result import PerQuestionReview, ResultDetailResponse, ResultResponse
 from app.services.exam_service import ExamService
+from app.services.course_access_service import is_course_unlocked, unlocked_course_ids
 
 router = APIRouter(prefix="/results", tags=["Results"])
 
@@ -26,6 +27,8 @@ async def list_results(
     repo = ResultRepository(db)
     if current_user.role == UserRole.STUDENT:
         results, _ = await repo.list_results(student_id=current_user.id)
+        unlocked_ids = await unlocked_course_ids(db, current_user.id)
+        results = [result for result in results if result.exam.course_id in unlocked_ids]
     elif current_user.role == UserRole.TEACHER:
         courses_stmt = select(Course.id).where(
             or_(
@@ -56,6 +59,10 @@ async def get_result_detail(
     # Ownership check
     if current_user.role == UserRole.STUDENT and result.student_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    if current_user.role == UserRole.STUDENT and not await is_course_unlocked(
+        db, current_user.id, result.exam.course_id
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Result not found")
     if current_user.role == UserRole.TEACHER and not await CourseRepository(
         db
     ).is_teacher_assigned(result.exam.course_id, current_user.id):
@@ -120,6 +127,12 @@ async def download_result_pdf(
     db: AsyncSession = Depends(get_db),
 ):
     service = ExamService(db)
+    if current_user.role == UserRole.STUDENT:
+        result = await ResultRepository(db).get_by_id(result_id)
+        if result is None or result.student_id != current_user.id or not await is_course_unlocked(
+            db, current_user.id, result.exam.course_id
+        ):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Result not found")
     pdf_bytes = await service.get_or_generate_result_pdf(result_id, current_user)
 
     filename = f"result-{result_id}.pdf"

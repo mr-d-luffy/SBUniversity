@@ -4,7 +4,15 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models import Course, Enrollment, EnrollmentStatus, Task
+from app.db.models import (
+    Course,
+    CourseKeyRequest,
+    CourseKeyRequestStatus,
+    CourseUnlock,
+    Enrollment,
+    EnrollmentStatus,
+    Task,
+)
 
 
 @pytest.mark.asyncio
@@ -29,6 +37,20 @@ async def test_exam_lifecycle_grading_and_task_points(client: AsyncClient, db_se
         status=EnrollmentStatus.ACTIVE,
     )
     db_session.add(enrollment)
+    key_request = CourseKeyRequest(
+        student_id=student1_id,
+        course_id=course.id,
+        status=CourseKeyRequestStatus.ACTIVATED,
+    )
+    db_session.add(key_request)
+    await db_session.flush()
+    db_session.add(
+        CourseUnlock(
+            student_id=student1_id,
+            course_id=course.id,
+            request_id=key_request.id,
+        )
+    )
     await db_session.commit()
 
     # 2. Teacher creates exam

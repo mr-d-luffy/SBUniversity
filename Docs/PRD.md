@@ -138,7 +138,7 @@ Institutions typically run exams, results, certificates, notices and student ide
 - The browser uses WebCrypto to encrypt text and recorded audio with AES-GCM conversation keys. Device identity keys use RSA-OAEP; the browser wraps each conversation key to registered participant-device public keys and stores the private device key and conversation keys in IndexedDB.
 - The API stores encrypted message bodies/audio, public device keys, encrypted key envelopes, and conversation metadata. It does not receive message plaintext or private keys. Encryption does not hide sender/recipient identity, timing, role, or other service metadata.
 - Browser-held device and conversation keys have no application TTL. Clearing browser storage or changing browser/device can make prior messages unreadable on that device; a device without a key needs a device that already has access to provide an envelope.
-- A conversation's expiry is reset on each new message. The backend removes expired conversation and message database rows, including their key envelopes, after 10 hours without a new message. Uploaded audio objects are stored separately and are not deleted by that database cleanup; their storage retention must be managed/verified separately.
+- A conversation's expiry is reset on each new message. The backend removes expired conversation and message database rows, including their key envelopes, after 48 hours without a new message. Uploaded audio objects are stored separately and are not deleted by that database cleanup; their storage retention must be managed/verified separately.
 
 ## 8. Non-Functional Requirements
 | Area | Requirement |

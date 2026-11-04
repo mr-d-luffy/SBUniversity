@@ -1,11 +1,11 @@
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
+
 from sqlalchemy import and_, func, or_, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from app.db.models.course import Course
+
 from app.db.models.task import (
     CompletionStatus,
     Task,
@@ -250,6 +250,87 @@ class TaskRepository:
         res = await self.db.execute(stmt)
         row = res.one()
         return int(row[0]), int(row[1]), row[2]
+
+    async def get_student_ranking_summary(
+        self,
+        student_id: uuid.UUID,
+        course_id: uuid.UUID,
+    ) -> Optional[Tuple[int, int, int]]:
+        summary = (
+            select(
+                TaskCompletion.student_id.label("student_id"),
+                func.sum(TaskCompletion.points_awarded).label("points"),
+                func.count(TaskCompletion.id).label("tasks_completed"),
+                func.max(TaskCompletion.completed_at).label("last_completed_at"),
+            )
+            .join(User, User.id == TaskCompletion.student_id)
+            .join(Task, Task.id == TaskCompletion.task_id)
+            .where(
+                TaskCompletion.status == CompletionStatus.COMPLETED,
+                User.status == "active",
+                Task.course_id == course_id,
+            )
+            .group_by(TaskCompletion.student_id)
+            .having(func.sum(TaskCompletion.points_awarded) > 0)
+            .subquery()
+        )
+        ranked = (
+            select(
+                summary.c.student_id,
+                func.row_number()
+                .over(
+                    order_by=(
+                        summary.c.points.desc(),
+                        summary.c.last_completed_at.asc(),
+                        summary.c.student_id.asc(),
+                    )
+                )
+                .label("rank"),
+                summary.c.points,
+                summary.c.tasks_completed,
+            )
+            .subquery()
+        )
+        row = (
+            await self.db.execute(
+                select(ranked.c.rank, ranked.c.points, ranked.c.tasks_completed).where(
+                    ranked.c.student_id == student_id
+                )
+            )
+        ).one_or_none()
+        if row is None:
+            return None
+        return int(row.rank), int(row.points), int(row.tasks_completed)
+
+    async def get_student_points_summaries(
+        self, student_ids: List[uuid.UUID]
+    ) -> dict[uuid.UUID, Tuple[str, Optional[str], int, int]]:
+        if not student_ids:
+            return {}
+
+        stmt = (
+            select(
+                User.id,
+                User.full_name,
+                User.avatar_url,
+                func.coalesce(func.sum(TaskCompletion.points_awarded), 0),
+                func.count(TaskCompletion.id),
+            )
+            .outerjoin(
+                TaskCompletion,
+                and_(
+                    TaskCompletion.student_id == User.id,
+                    TaskCompletion.status == CompletionStatus.COMPLETED,
+                ),
+            )
+            .where(User.id.in_(student_ids), User.status == "active")
+            .group_by(User.id, User.full_name, User.avatar_url)
+        )
+        rows = (await self.db.execute(stmt)).all()
+        return {
+            student_id: (name, avatar, int(points), int(tasks_completed))
+            for student_id, name, avatar, points, tasks_completed in rows
+        }
 
     async def get_top_students_sql(self, course_id: Optional[uuid.UUID] = None, limit: int = 4) -> List[Tuple[uuid.UUID, str, Optional[str], int, int, datetime]]:
         """

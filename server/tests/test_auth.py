@@ -124,6 +124,129 @@ async def test_first_login_student_code_uses_highest_existing_code(client: Async
 
 
 @pytest.mark.asyncio
+async def test_first_login_ignores_untrusted_role_claims(client: AsyncClient, monkeypatch: pytest.MonkeyPatch):
+    from app.core.config import settings
+
+    async def verify_token(token: str):
+        return {
+            "sub": "untrusted_role_claim",
+            "email": "new-student@sbuniversity.edu",
+            "role": "admin",
+            "metadata": {"role": "admin"},
+        }
+
+    monkeypatch.setattr(settings, "CLERK_SECRET_KEY", None)
+    monkeypatch.setattr("app.core.deps.verify_clerk_token", verify_token)
+    response = await client.get(
+        "/me",
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["role"] == "student"
+
+
+@pytest.mark.asyncio
+async def test_first_login_surfaces_clerk_lookup_failures(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import httpx
+    from app.core.config import settings
+
+    class ClerkClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return None
+
+        async def get(self, url: str, headers: dict[str, str]):
+            raise httpx.ConnectError("Clerk is unavailable")
+
+    async def verify_token(token: str):
+        return {"sub": "clerk_lookup_failure", "email": "new-student@sbuniversity.edu"}
+
+    monkeypatch.setattr(settings, "CLERK_SECRET_KEY", "test-secret")
+    monkeypatch.setattr("app.core.deps.httpx.AsyncClient", lambda timeout: ClerkClient())
+    monkeypatch.setattr("app.core.deps.verify_clerk_token", verify_token)
+
+    response = await client.get(
+        "/me",
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 503
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("verified", [False, True])
+async def test_email_account_linking_requires_verified_primary_email_and_preserves_role(
+    client: AsyncClient,
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+    verified: bool,
+):
+    from app.core.config import settings
+
+    class ClerkResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "id": "new_clerk_identity",
+                "public_metadata": {"role": "admin"},
+                "primary_email_address_id": "email_1",
+                "email_addresses": [
+                    {
+                        "id": "email_1",
+                        "email_address": "student1@sbuniversity.edu",
+                        "verification": {
+                            "status": "verified" if verified else "unverified",
+                        },
+                    }
+                ],
+            }
+
+    class ClerkClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return None
+
+        async def get(self, url: str, headers: dict[str, str]):
+            assert headers["Authorization"] == "Bearer test-secret"
+            return ClerkResponse()
+
+    async def verify_token(token: str):
+        return {
+            "sub": "new_clerk_identity",
+            "email": "Student1@sbuniversity.edu",
+            "role": "admin",
+            "metadata": {"role": "admin"},
+        }
+
+    monkeypatch.setattr(settings, "CLERK_SECRET_KEY", "test-secret")
+    monkeypatch.setattr("app.core.deps.httpx.AsyncClient", lambda timeout: ClerkClient())
+    monkeypatch.setattr("app.core.deps.verify_clerk_token", verify_token)
+
+    response = await client.get(
+        "/me",
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    if verified:
+        assert response.status_code == 200
+        assert response.json()["role"] == "student"
+        assert db_session.test_student1.clerk_user_id == "new_clerk_identity"
+    else:
+        assert response.status_code == 409
+        assert db_session.test_student1.clerk_user_id == "u_student1"
+        assert db_session.test_student1.role == UserRole.STUDENT
+
+
+@pytest.mark.asyncio
 async def test_student_cannot_access_admin_routes(client: AsyncClient):
     resp = await client.get("/admin/users", headers={"Authorization": "Bearer dev-token-student-u_student1"})
     assert resp.status_code == 403

@@ -71,7 +71,7 @@ async def periodic_expired_attempts_sweeper():
 
 
 async def periodic_expired_community_chats_sweeper():
-    """Delete community conversations 10 hours after their latest message."""
+    """Delete community conversations 48 hours after their latest message."""
     while True:
         try:
             await asyncio.sleep(60)

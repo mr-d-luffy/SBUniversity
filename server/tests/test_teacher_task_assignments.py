@@ -6,6 +6,10 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import (
     Course,
+    CourseKeyRequest,
+    CourseKeyRequestStatus,
+    CourseTeacher,
+    CourseUnlock,
     Enrollment,
     EnrollmentStatus,
     TaskVideoProgress,
@@ -28,6 +32,12 @@ async def test_teacher_can_create_link_task_for_selected_students(
     )
     db_session.add(course)
     await db_session.flush()
+    db_session.add(
+        CourseTeacher(
+            course_id=course.id,
+            teacher_id=db_session.test_teacher.id,
+        )
+    )
     db_session.add_all(
         [
             Enrollment(
@@ -36,6 +46,27 @@ async def test_teacher_can_create_link_task_for_selected_students(
                 status=EnrollmentStatus.ACTIVE,
             ),
         ]
+    )
+    key_requests = [
+        CourseKeyRequest(
+            student_id=student_id,
+            course_id=course.id,
+            status=CourseKeyRequestStatus.ACTIVATED,
+        )
+        for student_id in (
+            db_session.test_student1.id,
+            db_session.test_student2.id,
+        )
+    ]
+    db_session.add_all(key_requests)
+    await db_session.flush()
+    db_session.add_all(
+        CourseUnlock(
+            student_id=request.student_id,
+            course_id=course.id,
+            request_id=request.id,
+        )
+        for request in key_requests
     )
     await db_session.commit()
 

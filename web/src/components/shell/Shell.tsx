@@ -15,6 +15,7 @@ import {
   GraduationCap,
   Info,
   IdCard,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Megaphone,
@@ -80,6 +81,7 @@ const NAV: Record<Role, NavItem[]> = {
   admin: [
     { href: "/admin/users", label: "User Control", icon: Users },
     { href: "/admin/courses", label: "Course Control", icon: BookMarked },
+    { href: "/admin/course-keys", label: "Key Approvals", icon: KeyRound },
     { href: "/admin/progress", label: "Progress Check", icon: BookOpen },
     { href: "/admin/analytics", label: "Live Analytics", icon: BarChart3 },
     { href: "/admin/security", label: "Security Monitor", icon: ShieldCheck },

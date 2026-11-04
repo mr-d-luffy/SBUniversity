@@ -8,7 +8,7 @@
 - Verifiable PDFs generated in the backend and downloaded from the frontend.
 - Live Top-4 leaderboard driven by **Task Points** awarded automatically on task completion, plus admin live analytics.
 - Strong RBAC with hardened admin routes.
-- Community Chat encrypts text and audio in the browser and removes inactive conversation records after 10 hours.
+- Community Chat provides Help & Support, encrypts text and audio in the browser, and removes inactive conversation records after 48 hours.
 
 **Non-goals (MVP):** payments, video lessons/video conferencing, proctoring, email/SMS, multi-tenancy, descriptive/coding questions. A student-scoped Flutter Android client foundation exists, but it is not feature-complete or production-ready.
 
@@ -118,7 +118,7 @@ erDiagram
 
 **Caching:** Redis — leaderboard ZSETs, public stats (5 min), admin overview analytics (45 s), Clerk JWKS (1 h), and rate-limit counters. Notice writes invalidate legacy cache keys; current notice-list caching is not confirmed in code.
 **Indexing:** FK indexes, `(exam_id, score DESC, time_taken_sec)`, partial index on in-progress attempts, `(student_id, status)` and `UNIQUE (task_id, student_id)` on task_completions, `(status, published_at DESC)` for notices.
-**Retention:** the Community Chat sweeper deletes conversation/message database rows and key envelopes after 10 hours without a new message. Browser device and conversation keys have no application TTL. Uploaded encrypted audio objects are stored separately and are not deleted by the conversation cleanup. Do not treat other feature records or provider backups as having a common TTL; confirm their retention separately.
+**Retention:** the Community Chat sweeper deletes conversation/message database rows and key envelopes after 48 hours without a new message. Browser device and conversation keys have no application TTL. Uploaded encrypted audio objects are stored separately and are not deleted by the conversation cleanup. Do not treat other feature records or provider backups as having a common TTL; confirm their retention separately.
 
 ## 7. API Design
 Base `/api/v1`, JSON, `Authorization: Bearer <Clerk JWT>`. Versioned by path (`/v1`). Errors: `{ "error": { "code", "message", "details" } }`.
@@ -379,4 +379,4 @@ The following are proposed production metrics and alert targets, not evidence th
 - The same animated AI orb is used in the assistant page, floating launcher, and panel; `web/src/app/icon.svg` is the favicon.
 - Student dashboard task completion states are fetched in one batched query for the selected tasks rather than one sequential query per task; a regression test verifies the response states and query bound.
 - Performance audit follow-up: bulk teacher analytics aggregation and bound/paginate task-completion history. API p95 and query-count/load targets remain to be measured.
-- Community Chat uses IndexedDB to persist device private keys and conversation keys without a TTL. The 10-hour inactivity cleanup removes conversation and message database rows and server key envelopes, but not separately stored audio objects.
+- Community Chat uses IndexedDB to persist device private keys and conversation keys without a TTL. The 48-hour inactivity cleanup removes conversation and message database rows and server key envelopes, but not separately stored audio objects.

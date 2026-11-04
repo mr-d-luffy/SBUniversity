@@ -124,7 +124,6 @@ export default function AdminSecurityPage() {
   const statusTotal = Math.max(1, analytics.successes + analytics.clientErrors + analytics.serverErrors);
   const successPercent = Math.round((analytics.successes / statusTotal) * 100);
   const clientPercent = Math.round((analytics.clientErrors / statusTotal) * 100);
-  const serverPercent = Math.max(0, 100 - successPercent - clientPercent);
   const statusGradient = `conic-gradient(#15803d 0 ${successPercent}%, #f59e0b ${successPercent}% ${successPercent + clientPercent}%, #e11d48 ${successPercent + clientPercent}% 100%)`;
 
   return (

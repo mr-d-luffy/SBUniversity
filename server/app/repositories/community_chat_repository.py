@@ -16,7 +16,7 @@ from app.db.models.chat import (
 )
 from app.db.models.user import User, UserRole, UserStatus
 
-COMMUNITY_CHAT_LIFETIME = timedelta(hours=10)
+COMMUNITY_CHAT_LIFETIME = timedelta(hours=48)
 
 
 class CommunityChatRepository:

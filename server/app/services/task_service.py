@@ -23,6 +23,7 @@ from app.db.models.task import (
 from app.db.models.user import User, UserRole, UserStatus
 from app.repositories.audit_repository import AuditRepository
 from app.repositories.course_repository import CourseRepository
+from app.services.course_access_service import is_course_unlocked
 from app.repositories.task_repository import TaskRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.task import StudentPointsResponse, TaskCreate, TaskPointsHistoryItem, TaskUpdate
@@ -111,6 +112,8 @@ class TaskService:
         return await self.task_repo.create(task)
 
     async def student_can_access_task(self, task: Task, student_id: uuid.UUID) -> bool:
+        if not await is_course_unlocked(self.db, student_id, task.course_id):
+            return False
         if task.assignment_scope == TaskAssignmentScope.SELECTED_STUDENTS:
             recipient_stmt = select(TaskRecipient.student_id).where(
                 TaskRecipient.task_id == task.id,

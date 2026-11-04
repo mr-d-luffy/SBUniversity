@@ -6,7 +6,14 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Course, Enrollment, EnrollmentStatus
+from app.db.models import (
+    Course,
+    CourseKeyRequest,
+    CourseKeyRequestStatus,
+    CourseUnlock,
+    Enrollment,
+    EnrollmentStatus,
+)
 from app.db.models.whiteboard import WhiteboardMessage
 from app.repositories.whiteboard_repository import WhiteboardRepository
 
@@ -35,6 +42,20 @@ async def create_course(db_session: AsyncSession) -> Course:
             student_id=db_session.test_student1.id,
             course_id=course.id,
             status=EnrollmentStatus.ACTIVE,
+        )
+    )
+    request = CourseKeyRequest(
+        student_id=db_session.test_student1.id,
+        course_id=course.id,
+        status=CourseKeyRequestStatus.ACTIVATED,
+    )
+    db_session.add(request)
+    await db_session.flush()
+    db_session.add(
+        CourseUnlock(
+            student_id=db_session.test_student1.id,
+            course_id=course.id,
+            request_id=request.id,
         )
     )
     await db_session.commit()

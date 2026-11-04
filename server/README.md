@@ -14,8 +14,9 @@ Backend API for the **SiliconBrains University** platform.
 - **Document Generation:** Backend ReportLab PDF engine (official Result statements & Certificates with QR codes)
 - **AI Assistant:** Aarsh Intelligence (Google Gemini) with anti-cheat live exam guardrails
 - **Live classroom:** Course-scoped whiteboard sessions, persisted strokes, and expiring class chat
-- **Community Chat:** End-to-end encrypted text and voice messages; WebCrypto keys are retained in browser IndexedDB, while inactive conversation records are cleaned up after 10 hours
+- **Community Chat:** Help & Support and end-to-end encrypted text and voice messages; WebCrypto keys are retained in browser IndexedDB, while inactive conversation records are cleaned up after 48 hours
 - **Admin controls:** Course CRUD, multiple course teachers, selected student enrollment, and permanent account deletion
+- **Course access:** Published courses are locked for students until an admin-approved one-time key is activated. Students request a key after payment; activation grants permanent access. Admins and assigned teachers can update price and discount.
 - **Security:** Supabase RLS is configured in the SQL bootstrap as defense-in-depth; API authorization and ownership checks are the application boundary. Verify deployed database policies separately.
 
 ---
@@ -38,7 +39,7 @@ server/
 │   │   ├── session.py               # Async engine and sessionmaker
 │   │   └── models/                  # SQLAlchemy 2.0 ORM models
 │   │       ├── user.py              # User, Department, StudentProfile, TeacherProfile
-│   │       ├── course.py            # Course, Enrollment
+│   │       ├── course.py            # Course pricing, enrollments, key requests, and lifetime unlocks
 │   │       ├── exam.py              # Exam, Question, QuestionOption, ExamAttempt, AttemptAnswer
 │   │       ├── result.py            # Result
 │   │       ├── certificate.py       # Certificate
@@ -57,7 +58,8 @@ server/
 │   │   ├── ai_service.py            # Gemini assistant (Aarsh Intelligence)
 │   │   ├── notice_service.py        # Scoped notice delivery & caching
 │   │   ├── user_service.py          # Profiles, Virtual ID card, role sync
-│   │   ├── course_service.py        # Courses and enrollments
+│   │   ├── course_service.py        # Courses, pricing, and enrollments
+│   │   ├── course_access_service.py # Key requests, admin review, and key activation
 │   │   └── analytics_service.py     # Real-time analytics & SSE stream
 │   └── api/v1/                      # REST endpoints (/api/v1)
 │       ├── public.py                # Public stats & QR verification
@@ -129,13 +131,13 @@ requests still require a working database.
 
 Use Alembic for a fresh database and for databases already tracked by Alembic.
 The SQL bootstrap is a legacy manual schema setup and does not include every
-current revision (including the Community Chat E2EE device/envelope schema).
+current revision (including the Community Chat E2EE, course key, and retention schemas).
 ```bash
 alembic upgrade head
 ```
 Run the command from the `server/` directory with the intended database
 configured in `DATABASE_URL`. The current Alembic head in this checkout is
-`019_community_chat_e2ee`; this applies all revisions after the database's
+`021_community_chat_48_hour_retention`; this applies all revisions after the database's
 recorded revision.
 
 #### Existing database created from the SQL bootstrap
@@ -208,7 +210,7 @@ docker-compose up --build
 6. **Community Chat end-to-end encryption:**
    - WebCrypto encrypts message text and recorded audio in the browser with per-conversation AES-GCM keys. Device public keys are registered with the API; conversation keys are wrapped for participant devices and stored as encrypted envelopes.
    - The device private key and conversation keys are retained in IndexedDB with no application TTL. They can be lost when browser storage is cleared or the device/browser profile changes; a new device needs an existing device with access to provision its keys.
-   - The API and storage receive ciphertext, key envelopes, public keys, and conversation metadata, not message plaintext. Conversation/message database records and their key envelopes are removed after 10 hours without a new message. The expiry job does not itself remove uploaded audio objects from external object storage; deployment retention for those objects must be verified separately.
+   - The API and storage receive ciphertext, key envelopes, public keys, and conversation metadata, not message plaintext. Conversation/message database records and their key envelopes are removed after 48 hours without a new message. The expiry job does not itself remove uploaded audio objects from external object storage; deployment retention for those objects must be verified separately.
    - This describes the current implementation, not an independently audited cryptographic guarantee.
 
 ---

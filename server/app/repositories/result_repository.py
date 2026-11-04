@@ -3,7 +3,6 @@ from typing import List, Optional, Tuple
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from app.db.models.course import Course
 from app.db.models.exam import Exam
 from app.db.models.result import Result
 
@@ -73,7 +72,7 @@ class ResultRepository:
             .where(
                 Result.student_id == student_id,
                 Exam.course_id == course_id,
-                Result.passed == True,
+                Result.passed,
             )
         )
         res = await self.db.execute(stmt)

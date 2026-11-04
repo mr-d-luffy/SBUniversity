@@ -7,6 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import (
     CompletionStatus,
     Course,
+    CourseKeyRequest,
+    CourseKeyRequestStatus,
+    CourseUnlock,
     Enrollment,
     EnrollmentStatus,
     Task,
@@ -17,6 +20,23 @@ from app.db.models import (
     TaskType,
     TaskVerification,
 )
+
+
+async def unlock_course(db_session, student, course):
+    request = CourseKeyRequest(
+        student_id=student.id,
+        course_id=course.id,
+        status=CourseKeyRequestStatus.ACTIVATED,
+    )
+    db_session.add(request)
+    await db_session.flush()
+    db_session.add(
+        CourseUnlock(
+            student_id=student.id,
+            course_id=course.id,
+            request_id=request.id,
+        )
+    )
 
 
 @pytest.mark.asyncio
@@ -47,6 +67,7 @@ async def test_student_fetches_all_active_tasks_for_enrolled_course(
             status=EnrollmentStatus.ACTIVE,
         )
     )
+    await unlock_course(db_session, student, course)
     expected_tasks = [
         Task(
             course_id=course.id,
@@ -142,6 +163,7 @@ async def test_student_keeps_access_to_own_completed_archived_course_task(
             status=EnrollmentStatus.DROPPED,
         )
     )
+    await unlock_course(db_session, student, course)
     completed_task = Task(
         course_id=course.id,
         created_by=db_session.test_teacher.id,

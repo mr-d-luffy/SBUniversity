@@ -18,7 +18,7 @@ This policy is tailored to the current repository. Application controls are impl
 | Admin | Admin | Administrative users, courses, notices, and platform operations |
 | Guest | Guest | Public pages and public verification only |
 
-Role assignment is controlled through Clerk public metadata by authorized administrators and synchronized to the application database through privileged admin actions and signed Clerk webhooks. The database is authoritative during requests, so stale JWT role claims cannot restore removed privileges. A client-supplied role or user ID is never an authorization grant. There is no separate moderator or super-admin role in the current application.
+Role assignment is controlled through Clerk public metadata by authorized administrators and synchronized to the application database through privileged admin actions, the Clerk backend API, and signed webhooks. Generic JWT role or metadata claims are not trusted for provisioning new accounts. An existing account can be linked to a Clerk identity only after Clerk confirms a matching verified primary email, and linking never changes the database role. The database is authoritative during requests, so stale JWT role claims cannot restore removed privileges. A client-supplied role or user ID is never an authorization grant. There is no separate moderator or super-admin role in the current application.
 
 ### Current implementation boundary
 
@@ -332,7 +332,7 @@ Review the Android manifest, network-security configuration, and release build s
 
 The current web client uses WebCrypto for Community Chat text and recorded audio. It encrypts payloads with per-conversation AES-GCM keys and wraps those keys for registered devices using RSA-OAEP. The browser stores a non-extractable device private `CryptoKey` and conversation `CryptoKey` records in IndexedDB. Public device keys and encrypted key envelopes are stored by the API; private keys and message plaintext are not sent to the server. Sender/recipient, timestamps, role, and other conversation metadata remain visible.
 
-Device and conversation keys have **no application TTL**. The server deletes conversation/message database rows and key-envelope rows after 10 hours without a new message; this database cleanup does not delete separately stored audio objects. Browser storage clearing can destroy a user's only copy of a key, while old local keys may remain after the server conversation is deleted. This implementation has not received an independent cryptographic audit; do not describe it as a formally verified protocol.
+Device and conversation keys have **no application TTL**. The server deletes conversation/message database rows and key-envelope rows after 48 hours without a new message; this database cleanup does not delete separately stored audio objects. Browser storage clearing can destroy a user's only copy of a key, while old local keys may remain after the server conversation is deleted. This implementation has not received an independent cryptographic audit; do not describe it as a formally verified protocol.
 
 ### 9.3 Privacy & Compliance
 - **[MUST]** Collect only necessary data (data minimization) and define retention periods.

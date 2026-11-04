@@ -5,7 +5,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.core.deps import get_current_user, require_role
-from app.db.models.course import Course, CourseTeacher, Enrollment, EnrollmentStatus
+from app.db.models.course import Course, CourseTeacher, CourseUnlock, Enrollment, EnrollmentStatus
 from app.db.models.exam import AttemptAnswer, AttemptStatus, Exam, ExamAttempt, ExamStatus, Question, QuestionOption
 from app.db.models.user import User, UserRole
 from app.db.session import get_db
@@ -28,6 +28,7 @@ from app.schemas.exam import (
     SubmitAttemptResponse,
 )
 from app.services.exam_service import ExamService
+from app.services.course_access_service import is_course_unlocked
 
 router = APIRouter(prefix="", tags=["Exams"])
 
@@ -49,6 +50,11 @@ async def list_exams(
         enrolled_stmt = select(Enrollment.course_id).where(
             Enrollment.student_id == current_user.id,
             Enrollment.status == EnrollmentStatus.ACTIVE,
+        )
+        enrolled_stmt = enrolled_stmt.join(
+            CourseUnlock,
+            (CourseUnlock.course_id == Enrollment.course_id)
+            & (CourseUnlock.student_id == Enrollment.student_id),
         )
         enrolled_ids = (await db.execute(enrolled_stmt)).scalars().all()
         approved_exam_ids = (await db.scalars(
@@ -126,7 +132,11 @@ async def get_exam_detail(
         enrollment = await CourseRepository(db).get_enrollment(
             current_user.id, exam.course_id
         )
-        if not enrollment or enrollment.status != EnrollmentStatus.ACTIVE:
+        if (
+            not enrollment
+            or enrollment.status != EnrollmentStatus.ACTIVE
+            or not await is_course_unlocked(db, current_user.id, exam.course_id)
+        ):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found"
             )
@@ -291,6 +301,10 @@ async def get_attempt(
     res = await db.execute(stmt)
     attempt = res.scalar_one_or_none()
     if not attempt or (current_user.role == UserRole.STUDENT and attempt.student_id != current_user.id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attempt not found")
+    if current_user.role == UserRole.STUDENT and not await is_course_unlocked(
+        db, current_user.id, attempt.exam.course_id
+    ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attempt not found")
 
     answers_map = {str(a.question_id): str(a.selected_option_id) if a.selected_option_id else None for a in attempt.answers}

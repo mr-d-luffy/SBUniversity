@@ -19,6 +19,8 @@ interface AdminCourse {
   description?: string | null;
   is_published: boolean;
   enrolled_students: number;
+  price: number;
+  discount_percent: number;
 }
 
 type CreateCourseResponse = AdminCourse;
@@ -61,7 +63,8 @@ export function AdminCourses() {
   const [teacherIds, setTeacherIds] = useState<string[]>([]);
   const [studentIds, setStudentIds] = useState<string[]>([]);
   const [studentSearch, setStudentSearch] = useState("");
-
+  const [price, setPrice] = useState("0.00");
+  const [discountPercent, setDiscountPercent] = useState("0");
   const resolveToken = useCallback(async () => {
     let token = await getToken();
     if (!token && (process.env.NEXT_PUBLIC_DEMO_MODE === "true" || process.env.NODE_ENV === "development")) {
@@ -100,6 +103,8 @@ export function AdminCourses() {
     setCode(defaultCourseCode());
     setTitle("OpenUniversity Course");
     setDescription("");
+    setPrice("0.00");
+    setDiscountPercent("0");
     setEnrollAll(true);
     setIsPublished(true);
     setTeacherIds(teachers[0] ? [teachers[0].id] : []);
@@ -114,6 +119,8 @@ export function AdminCourses() {
     setCode(course.code);
     setTitle(course.title);
     setDescription(course.description ?? "");
+    setPrice(String(course.price ?? 0));
+    setDiscountPercent(String(course.discount_percent ?? 0));
     const assignedTeachers = course.teacher_ids.filter((id) => teachers.some((teacher) => teacher.id === id));
     setTeacherIds(assignedTeachers.length ? assignedTeachers : teachers[0] ? [teachers[0].id] : []);
     setStudentIds(course.student_ids);
@@ -138,6 +145,8 @@ export function AdminCourses() {
         student_ids: studentIds,
         is_published: isPublished,
         enroll_all_active_students: enrollAll,
+        price: Number(price),
+        discount_percent: Number(discountPercent),
       };
       const saved = await api<CreateCourseResponse>(
         editingCourse ? `/admin/courses/${editingCourse.id}` : "/admin/courses",
@@ -225,6 +234,10 @@ export function AdminCourses() {
               {course.description && (
                 <p className="mt-3 line-clamp-3 text-sm text-ink-muted">{course.description}</p>
               )}
+              <p className="mt-3 text-sm text-ink-muted">
+                Price: {Number(course.price).toFixed(2)}
+                {course.discount_percent > 0 && ` · ${course.discount_percent}% discount`}
+              </p>
               <div className="mt-5 flex min-w-0 items-start gap-2 border-t border-cream-200 pt-4 text-sm text-ink-muted">
                 <Users size={16} className="text-green-700" />
                 <span className="break-words">{course.enrolled_students} active student{course.enrolled_students === 1 ? "" : "s"} enrolled</span>
@@ -319,6 +332,33 @@ export function AdminCourses() {
                     className="mt-1 h-10 w-full rounded-lg border border-cream-300 px-3 text-sm font-normal text-ink"
                   />
                 </label>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block text-sm font-semibold text-green-900">
+                    Course price
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      required
+                      value={price}
+                      onChange={(event) => setPrice(event.target.value)}
+                      className="mt-1 h-10 w-full rounded-lg border border-cream-300 px-3 text-sm font-normal text-ink"
+                    />
+                  </label>
+                  <label className="block text-sm font-semibold text-green-900">
+                    Discount percentage
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="1"
+                      required
+                      value={discountPercent}
+                      onChange={(event) => setDiscountPercent(event.target.value)}
+                      className="mt-1 h-10 w-full rounded-lg border border-cream-300 px-3 text-sm font-normal text-ink"
+                    />
+                  </label>
+                </div>
                 <label className="block text-sm font-semibold text-green-900">
                   Course name
                   <input
@@ -350,7 +390,7 @@ export function AdminCourses() {
                 />
                 <span>
                   <span className="block font-semibold text-green-900">Publish course</span>
-                  <span className="mt-1 block text-xs text-ink-muted">Published courses are available to enrolled students.</span>
+                  <span className="mt-1 block text-xs text-ink-muted">Published courses appear in the student catalog; access stays locked until a key is activated.</span>
                 </span>
               </label>
               <fieldset className="rounded-xl border border-cream-300 p-3">

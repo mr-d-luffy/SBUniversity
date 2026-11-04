@@ -21,10 +21,15 @@ from app.db.models.task import (
 from app.db.models.user import User, UserRole
 from app.db.session import get_db
 from app.repositories.course_repository import CourseRepository
-from app.schemas.course import EnrollmentResponse
+from app.schemas.course import (
+    CourseKeyActivationRequest,
+    EnrollmentResponse,
+    StudentCourseKeyRequestResponse,
+)
 from app.schemas.task import StudentPointsResponse
 from app.schemas.user import VirtualIDCardResponse
 from app.services.ranking_service import RankingService
+from app.services.course_access_service import CourseAccessService, is_course_unlocked, unlocked_course_ids
 from app.services.task_service import TaskService
 from app.services.user_service import UserService
 
@@ -44,6 +49,8 @@ async def get_student_dashboard(
     )
     enrollments_res = await db.execute(enrollments_stmt)
     enrollments = list(enrollments_res.scalars().all())
+    unlocked_ids = await unlocked_course_ids(db, current_user.id)
+    enrollments = [enrollment for enrollment in enrollments if enrollment.course_id in unlocked_ids]
     enrolled_course_ids = [e.course_id for e in enrollments]
 
     # 2. Upcoming exams
@@ -78,7 +85,10 @@ async def get_student_dashboard(
     results_stmt = (
         select(Result)
         .options(selectinload(Result.exam).selectinload(Exam.course))
-        .where(Result.student_id == current_user.id)
+        .where(
+            Result.student_id == current_user.id,
+            Result.exam.has(Exam.course_id.in_(unlocked_ids)) if unlocked_ids else False,
+        )
         .order_by(Result.created_at.desc())
         .limit(5)
     )
@@ -112,6 +122,7 @@ async def get_student_dashboard(
                 ),
                 and_(
                     Task.assignment_scope == TaskAssignmentScope.SELECTED_STUDENTS,
+                    Task.course_id.in_(unlocked_ids) if unlocked_ids else False,
                     Task.id.in_(
                         select(TaskRecipient.task_id).where(
                             TaskRecipient.student_id == current_user.id
@@ -154,7 +165,13 @@ async def get_student_dashboard(
     points_summary = await task_service.get_student_points(current_user.id)
 
     # 6. Certificates count
-    certs_cnt_res = await db.execute(select(func.count(Certificate.id)).where(Certificate.student_id == current_user.id, Certificate.revoked_at.is_(None)))
+    certs_cnt_res = await db.execute(
+        select(func.count(Certificate.id)).where(
+            Certificate.student_id == current_user.id,
+            Certificate.revoked_at.is_(None),
+            Certificate.course_id.in_(unlocked_ids) if unlocked_ids else False,
+        )
+    )
     certs_count = certs_cnt_res.scalar() or 0
 
     return {
@@ -192,14 +209,38 @@ async def get_student_courses(
     db: AsyncSession = Depends(get_db),
 ):
     course_repo = CourseRepository(db)
-    return await course_repo.list_student_enrollments(current_user.id)
+    unlocked_ids = await unlocked_course_ids(db, current_user.id)
+    return [
+        enrollment
+        for enrollment in await course_repo.list_student_enrollments(current_user.id)
+        if enrollment.course_id in unlocked_ids
+    ]
 
 
 @router.get("/course-catalog")
 async def list_course_catalog(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     enrolled = select(Enrollment.course_id).where(Enrollment.student_id == current_user.id, Enrollment.status == EnrollmentStatus.ACTIVE)
     rows = (await db.execute(select(Course).where(Course.is_published.is_(True)).order_by(Course.title))).scalars().all()
-    return [{"id": str(course.id), "code": course.code, "title": course.title, "description": course.description, "enrolled": course.id in set((await db.execute(enrolled)).scalars().all())} for course in rows]
+    enrolled_ids = set((await db.execute(enrolled)).scalars().all())
+    unlocked_ids = await unlocked_course_ids(db, current_user.id)
+    requests = await CourseAccessService(db).list_student_requests(current_user.id)
+    latest_status = {}
+    for request, _ in requests:
+        latest_status.setdefault(request.course_id, request.status.value)
+    return [
+        {
+            "id": str(course.id),
+            "code": course.code,
+            "title": course.title,
+            "description": course.description,
+            "price": course.price,
+            "discount_percent": course.discount_percent,
+            "enrolled": course.id in enrolled_ids,
+            "unlocked": course.id in unlocked_ids,
+            "key_request_status": latest_status.get(course.id),
+        }
+        for course in rows
+    ]
 
 
 @router.post("/courses/{course_id}/enroll", status_code=status.HTTP_201_CREATED)
@@ -207,6 +248,8 @@ async def enroll_in_course(course_id: uuid.UUID, current_user: User = Depends(ge
     course = await db.get(Course, course_id)
     if not course or not course.is_published:
         raise HTTPException(status_code=404, detail="Published course not found")
+    if not await is_course_unlocked(db, current_user.id, course_id):
+        raise HTTPException(status_code=403, detail="Unlock this course with an approved key first.")
     enrollment = await db.scalar(select(Enrollment).where(Enrollment.course_id == course_id, Enrollment.student_id == current_user.id))
     if enrollment:
         if enrollment.status == EnrollmentStatus.DROPPED:
@@ -216,6 +259,65 @@ async def enroll_in_course(course_id: uuid.UUID, current_user: User = Depends(ge
     db.add(Enrollment(course_id=course_id, student_id=current_user.id, status=EnrollmentStatus.ACTIVE))
     await db.commit()
     return {"message": "You are enrolled in this course"}
+
+
+@router.get(
+    "/course-key-requests",
+    response_model=List[StudentCourseKeyRequestResponse],
+)
+async def list_my_course_key_requests(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    requests = await CourseAccessService(db).list_student_requests(current_user.id)
+    return [
+        StudentCourseKeyRequestResponse(
+            id=request.id,
+            course_id=request.course_id,
+            course_title=course.title,
+            status=request.status.value,
+            requested_at=request.requested_at,
+            reviewed_at=request.reviewed_at,
+            activated_at=request.activated_at,
+        )
+        for request, course in requests
+    ]
+
+
+@router.post(
+    "/courses/{course_id}/key-requests",
+    response_model=StudentCourseKeyRequestResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def request_course_key(
+    course_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    request = await CourseAccessService(db).request_key(course_id, current_user)
+    course = await db.get(Course, course_id)
+    return StudentCourseKeyRequestResponse(
+        id=request.id,
+        course_id=request.course_id,
+        course_title=course.title,
+        status=request.status.value,
+        requested_at=request.requested_at,
+    )
+
+
+@router.post("/course-key-activations", status_code=status.HTTP_201_CREATED)
+async def activate_course_key(
+    data: CourseKeyActivationRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    unlock = await CourseAccessService(db).activate_key(data.key, current_user)
+    course = await db.get(Course, unlock.course_id)
+    return {
+        "course_id": str(unlock.course_id),
+        "course_title": course.title if course else "Course",
+        "unlocked_at": unlock.unlocked_at,
+    }
 
 
 @router.get("/points", response_model=StudentPointsResponse)

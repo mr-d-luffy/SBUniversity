@@ -279,7 +279,7 @@ class CommunityChatService:
                     expires_at=now + COMMUNITY_CHAT_LIFETIME,
                 )
             )
-        title = "Admin Support" if staff_role == UserRole.ADMIN else "Teacher Support"
+        title = "Help & Support" if staff_role == UserRole.ADMIN else "Teacher Support"
         return CommunityConversationResponse(
             id=conversation.id,
             kind=conversation.kind,
@@ -466,7 +466,7 @@ class CommunityChatService:
             requester = users.get(conversation.requester_student_id)
             is_requester = current_user.id == conversation.requester_student_id
             title = (
-                "Admin Support"
+                "Help & Support"
                 if is_requester
                 else requester.full_name if requester else "User"
             )

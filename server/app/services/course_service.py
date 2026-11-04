@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +32,8 @@ class CourseService:
             department_id=data.department_id,
             teacher_id=teacher_id,
             is_published=data.is_published,
+            price=data.price,
+            discount_percent=data.discount_percent,
         )
         return await self.course_repo.create(course)
 
@@ -68,6 +71,8 @@ class CourseService:
             department_id=data.department_id,
             teacher_id=selected_teacher_ids[0] if selected_teacher_ids else creator.id,
             is_published=data.is_published,
+            price=data.price,
+            discount_percent=data.discount_percent,
         )
         try:
             self.db.add(course)
@@ -143,7 +148,7 @@ class CourseService:
         student_ids = fields.pop("student_ids", None)
         enroll_all = fields.pop("enroll_all_active_students", None)
         for field, value in fields.items():
-            if field in {"code", "title"} and value is None:
+            if field in {"code", "title", "price", "discount_percent"} and value is None:
                 continue
             if field == "code" and value is not None:
                 value = value.strip().upper()
@@ -277,6 +282,28 @@ class CourseService:
         course.teacher_id = await self._validate_teacher_id(teacher_id)
         course.teacher_assignments.clear()
         course.teacher_assignments.append(CourseTeacher(teacher_id=teacher_id))
+        return await self.course_repo.update(course)
+
+    async def update_course_pricing(
+        self,
+        course_id: uuid.UUID,
+        price: Decimal,
+        discount_percent: int,
+        teacher: User,
+    ) -> Course:
+        course = await self.course_repo.get_by_id(course_id)
+        if course is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Course not found"
+            )
+        if teacher.role == UserRole.TEACHER and not await self.course_repo.is_teacher_assigned(
+            course_id, teacher.id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Course not found"
+            )
+        course.price = price
+        course.discount_percent = discount_percent
         return await self.course_repo.update(course)
 
     async def _validate_teacher_id(self, teacher_id: uuid.UUID) -> uuid.UUID:

@@ -18,7 +18,8 @@ from app.core.redis import InMemoryRedisFallback
 from app.core.security import SecurityError, verify_clerk_token
 from app.core.uploads import read_audio_upload, read_image_upload
 from app.main import should_record_request_telemetry
-from app.services.storage_service import _local_storage_path
+from app.services import storage_service
+from app.services.storage_service import StorageService, _local_storage_path
 
 
 @pytest.mark.parametrize(
@@ -148,6 +149,23 @@ async def test_profile_image_upload_checks_size_and_signature():
 def test_local_storage_rejects_traversal():
     with pytest.raises(ValueError):
         _local_storage_path("../outside.txt")
+
+
+@pytest.mark.asyncio
+async def test_local_storage_fallback_round_trips(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(settings, "APP_ENV", "development")
+    monkeypatch.setattr(storage_service, "LOCAL_STORAGE_DIR", tmp_path)
+    monkeypatch.setattr(storage_service, "supabase_client", None)
+    content = b"file-content"
+
+    uploaded_path = await StorageService.upload_file("test/item.bin", content)
+
+    assert uploaded_path == str((tmp_path / "test/item.bin").resolve())
+    assert await StorageService.download_file("test/item.bin") == content
+    assert await StorageService.download_file("test/missing.bin") is None
 
 
 @pytest.mark.asyncio

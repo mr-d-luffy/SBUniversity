@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.repositories.certificate_repository import CertificateRepository
 from app.schemas.certificate import CertificateResponse, RevokeCertificateRequest
 from app.services.certificate_service import CertificateService
+from app.services.course_access_service import is_course_unlocked, unlocked_course_ids
 
 router = APIRouter(prefix="/certificates", tags=["Certificates"])
 
@@ -20,6 +21,8 @@ async def list_certificates(
     repo = CertificateRepository(db)
     if current_user.role == UserRole.STUDENT:
         certs, _ = await repo.list_certificates(student_id=current_user.id, include_revoked=True)
+        unlocked_ids = await unlocked_course_ids(db, current_user.id)
+        certs = [certificate for certificate in certs if certificate.course_id in unlocked_ids]
     else:
         certs, _ = await repo.list_certificates()
 
@@ -45,6 +48,10 @@ async def get_certificate(
 
     if current_user.role == UserRole.STUDENT and cert.student_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    if current_user.role == UserRole.STUDENT and not await is_course_unlocked(
+        db, current_user.id, cert.course_id
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Certificate not found")
 
     resp = CertificateResponse.model_validate(cert)
     resp.course_title = cert.course.title if cert.course else "Course"
@@ -65,6 +72,10 @@ async def download_certificate_pdf(
 
     if current_user.role == UserRole.STUDENT and cert.student_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    if current_user.role == UserRole.STUDENT and not await is_course_unlocked(
+        db, current_user.id, cert.course_id
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Certificate not found")
 
     service = CertificateService(db)
     pdf_bytes = await service.get_or_generate_certificate_pdf(certificate_id)

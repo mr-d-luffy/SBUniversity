@@ -145,6 +145,6 @@ The repository includes the web app, FastAPI API, Clerk-backed auth, admin and t
 **Objective:** Provide shared student chat, peer conversations, and staff support with encrypted text and audio.
 - [x] Conversation, device-public-key, and wrapped-key-envelope models and API routes are present.
 - [x] Browser WebCrypto encrypts text/audio; device private keys and conversation keys persist in IndexedDB without a TTL.
-- [x] Expired conversation/message database rows and key envelopes are removed after 10 hours without a new message.
+- [x] Expired conversation/message database rows and key envelopes are removed after 48 hours without a new message.
 - [ ] Uploaded audio objects are not removed by the database cleanup; add/configure storage expiry and verify provider retention.
 **Completion:** Application behavior is implemented in the repository; cryptographic review, device/browser recovery UX, external storage retention, and production configuration remain to be verified.

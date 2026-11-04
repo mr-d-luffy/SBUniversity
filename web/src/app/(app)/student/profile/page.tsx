@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth, useClerk, useUser } from "@clerk/nextjs";
 import {
   GraduationCap,
@@ -60,6 +61,7 @@ interface MeApiResponse {
 }
 
 export default function StudentProfilePage() {
+  const router = useRouter();
   const { getToken } = useAuth();
   const { signOut } = useClerk();
   const { user } = useUser();
@@ -220,7 +222,7 @@ export default function StudentProfilePage() {
       try {
         await signOut({ redirectUrl: "/" });
       } catch {
-        window.location.assign("/");
+        router.replace("/");
       }
     } catch (err) {
       toast(err instanceof Error ? err.message : "Could not delete your account.");
@@ -228,7 +230,6 @@ export default function StudentProfilePage() {
     }
   };
 
-  const batchString = cardData.batch_year ? `${cardData.batch_year - 2} – ${cardData.batch_year + 2}` : "Not set";
   const verificationLabel = cardData.verification_status === "verified" ? "Verified" : "Not verified";
 
   return (

@@ -3,11 +3,10 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 from app.core.deps import get_current_user, require_role
 from app.db.models.course import Course, CourseTeacher, Enrollment, EnrollmentStatus
-from app.db.models.exam import Exam, ExamStatus
-from app.db.models.notice import Notice, NoticeStatus
+from app.db.models.exam import Exam
+from app.db.models.notice import Notice
 from app.db.models.result import Result
 from app.db.models.task import CompletionStatus, Task, TaskCompletion
 from app.db.models.user import User, UserRole, UserStatus
@@ -15,7 +14,7 @@ from app.db.session import get_db
 from app.repositories.course_repository import CourseRepository
 from app.schemas.result import ResultResponse
 from app.schemas.task import TeacherTaskCourseOption, TeacherTaskStudentOption
-from app.schemas.course import CourseCreate, CourseResponse
+from app.schemas.course import CourseCreate, CoursePricingUpdate, CourseResponse
 from app.services.course_service import CourseService
 
 router = APIRouter(prefix="/teacher", tags=["Teacher"], dependencies=[Depends(require_role([UserRole.TEACHER, UserRole.ADMIN]))])
@@ -26,6 +25,18 @@ async def create_teacher_course(data: CourseCreate, current_user: User = Depends
     if current_user.role != UserRole.TEACHER:
         raise HTTPException(status_code=403, detail="Only teachers can create courses here")
     return await CourseService(db).create_course(data, current_user)
+
+
+@router.patch("/courses/{course_id}/pricing", response_model=CourseResponse)
+async def update_teacher_course_pricing(
+    course_id: uuid.UUID,
+    data: CoursePricingUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await CourseService(db).update_course_pricing(
+        course_id, data.price, data.discount_percent, current_user
+    )
 
 
 @router.get("/dashboard")
@@ -62,7 +73,7 @@ async def get_teacher_dashboard(
             select(
                 func.count(Result.id),
                 func.avg(Result.percentage),
-                func.count(Result.id).filter(Result.passed == True),
+                func.count(Result.id).filter(Result.passed),
             )
             .join(Exam, Exam.id == Result.exam_id)
             .where(Exam.course_id.in_(course_ids))
@@ -100,7 +111,17 @@ async def get_teacher_dashboard(
     ]
 
     return {
-        "my_courses": [{"id": str(c.id), "code": c.code, "title": c.title, "is_published": c.is_published} for c in courses],
+        "my_courses": [
+            {
+                "id": str(c.id),
+                "code": c.code,
+                "title": c.title,
+                "is_published": c.is_published,
+                "price": float(c.price),
+                "discount_percent": c.discount_percent,
+            }
+            for c in courses
+        ],
         "total_exams": exams_count,
         "total_submissions": submissions_count,
         "average_score": avg_score,

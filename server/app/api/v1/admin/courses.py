@@ -18,8 +18,10 @@ from app.schemas.course import (
     AdminStudentResponse,
     AdminCourseTeacherUpdate,
     AdminTeacherResponse,
+    AdminCourseKeyRequestResponse,
 )
 from app.services.course_service import CourseService
+from app.services.course_access_service import CourseAccessService
 
 router = APIRouter(
     prefix="/courses",
@@ -84,6 +86,64 @@ async def list_course_students(db: AsyncSession = Depends(get_db)):
         }
         for student in students.all()
     ]
+
+
+def _key_request_response(request, course, student) -> AdminCourseKeyRequestResponse:
+    return AdminCourseKeyRequestResponse(
+        id=request.id,
+        course_id=request.course_id,
+        course_title=course.title,
+        status=request.status.value,
+        requested_at=request.requested_at,
+        reviewed_at=request.reviewed_at,
+        activated_at=request.activated_at,
+        student_id=student.id,
+        student_name=student.full_name,
+        student_email=student.email,
+        access_key=(
+            request.access_key
+            if request.status.value == "approved"
+            else None
+        ),
+    )
+
+
+@router.get("/key-requests", response_model=List[AdminCourseKeyRequestResponse])
+async def list_course_key_requests(db: AsyncSession = Depends(get_db)):
+    rows = await CourseAccessService(db).list_admin_requests()
+    return [_key_request_response(request, course, student) for request, course, student in rows]
+
+
+@router.post(
+    "/key-requests/{request_id}/approve",
+    response_model=AdminCourseKeyRequestResponse,
+)
+async def approve_course_key_request(
+    request_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    access_service = CourseAccessService(db)
+    request = await access_service.approve_request(request_id, current_user)
+    course = await db.get(Course, request.course_id)
+    student = await db.get(User, request.student_id)
+    return _key_request_response(request, course, student)
+
+
+@router.post(
+    "/key-requests/{request_id}/reject",
+    response_model=AdminCourseKeyRequestResponse,
+)
+async def reject_course_key_request(
+    request_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    access_service = CourseAccessService(db)
+    request = await access_service.reject_request(request_id, current_user)
+    course = await db.get(Course, request.course_id)
+    student = await db.get(User, request.student_id)
+    return _key_request_response(request, course, student)
 
 
 @router.patch("/{course_id}/teacher", response_model=AdminCourseResponse)

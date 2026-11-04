@@ -1,16 +1,16 @@
 import asyncio
-import json
 import uuid
 from typing import Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_user
-from app.core.redis import REDIS_CHANNEL_LB_UPDATES, get_redis_client
-from app.db.models.user import User
+from app.core.redis import get_redis_client
+from app.db.models.user import User, UserRole
 from app.db.session import get_db
 from app.schemas.ranking import LeaderboardResponse, MyRankResponse
 from app.services.ranking_service import RankingService
+from app.services.course_access_service import is_course_unlocked
 
 router = APIRouter(prefix="/ranking", tags=["Ranking"])
 
@@ -23,6 +23,17 @@ async def get_top_ranking(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if (scope == "course") != (course_id is not None):
+        raise HTTPException(
+            status_code=422,
+            detail="course_id must be provided only when scope is 'course'",
+        )
+    if (
+        current_user.role == UserRole.STUDENT
+        and course_id is not None
+        and not await is_course_unlocked(db, current_user.id, course_id)
+    ):
+        raise HTTPException(status_code=404, detail="Course not found")
     service = RankingService(db)
     return await service.get_top_students(scope=scope, course_id=course_id, limit=limit)
 
@@ -34,6 +45,17 @@ async def get_my_rank(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if (scope == "course") != (course_id is not None):
+        raise HTTPException(
+            status_code=422,
+            detail="course_id must be provided only when scope is 'course'",
+        )
+    if (
+        current_user.role == UserRole.STUDENT
+        and course_id is not None
+        and not await is_course_unlocked(db, current_user.id, course_id)
+    ):
+        raise HTTPException(status_code=404, detail="Course not found")
     service = RankingService(db)
     return await service.get_student_rank(current_user.id, scope=scope, course_id=course_id)
 

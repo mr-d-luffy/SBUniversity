@@ -181,4 +181,4 @@ Ranking is based on **Task Points** (see `PRD.md` §7.9, §7.13 and `database.md
 - Encrypt message text and audio in the browser using the existing WebCrypto utility; never send plaintext or private keys to the API.
 - Persist device private keys and conversation keys in IndexedDB. They have no application TTL; document device/browser storage loss and key-provisioning limits.
 - Treat server-stored message bodies, audio objects, and key envelopes as ciphertext, but remember that sender/recipient, timestamps, role, and other metadata remain visible to the service.
-- The 10-hour inactivity cleanup removes conversation/message database rows and key envelopes; it does not delete uploaded audio objects. Do not describe audio object retention as complete until that storage cleanup is implemented/configured.
+- The 48-hour inactivity cleanup removes conversation/message database rows and key envelopes; it does not delete uploaded audio objects. Do not describe audio object retention as complete until that storage cleanup is implemented/configured.

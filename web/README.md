@@ -43,7 +43,7 @@ src/proxy.ts             authentication gate (the server layout/API use the auth
 - Aarsh Intelligence assistant with a shared animated orb in the full-page assistant and floating chat controls.
 - Admin course creation/edit/deletion, teacher and student assignment, and user account deletion.
 - Course-scoped live whiteboard for assigned teachers and enrolled students.
-- Community Chat with client-side WebCrypto encryption for text and voice messages. Device/private and conversation keys persist in IndexedDB without a TTL; conversation records and database message history are cleaned up after 10 hours of inactivity. See [`../Docs/SECURITY_AND_ACCESS_CONTROL.md`](../Docs/SECURITY_AND_ACCESS_CONTROL.md#community-chat-encryption) for storage and retention limits.
+- Community Chat with Help & Support and client-side WebCrypto encryption for text and voice messages. Device/private and conversation keys persist in IndexedDB without a TTL; conversation records and database message history are cleaned up after 48 hours of inactivity. See [`../Docs/SECURITY_AND_ACCESS_CONTROL.md`](../Docs/SECURITY_AND_ACCESS_CONTROL.md#community-chat-encryption) for storage and retention limits.
 - Voice recording requests mono audio with echo/noise suppression and a 32 kbps encoder target to reduce upload size. Senders can replay their local recording immediately after upload. Chat refreshes messages every 5 seconds and conversation/key metadata less often, with immediate refresh when the tab becomes visible.
 - The full project feature list and remaining hardening/deployment work are tracked in [`../Docs/phases.md`](../Docs/phases.md).
 

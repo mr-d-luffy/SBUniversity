@@ -1,5 +1,5 @@
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import require_role
@@ -23,17 +23,17 @@ async def list_audit_logs(
     return {
         "items": [
             {
-                "id": l.id,
-                "actor_id": str(l.actor_id) if l.actor_id else None,
-                "actor_name": l.actor.full_name if l.actor else None,
-                "action": l.action,
-                "entity_type": l.entity_type,
-                "entity_id": l.entity_id,
-                "metadata": l.metadata_,
-                "ip_address": l.ip_address,
-                "created_at": l.created_at.isoformat(),
+                "id": audit_log.id,
+                "actor_id": str(audit_log.actor_id) if audit_log.actor_id else None,
+                "actor_name": audit_log.actor.full_name if audit_log.actor else None,
+                "action": audit_log.action,
+                "entity_type": audit_log.entity_type,
+                "entity_id": audit_log.entity_id,
+                "metadata": audit_log.metadata_,
+                "ip_address": audit_log.ip_address,
+                "created_at": audit_log.created_at.isoformat(),
             }
-            for l in logs
+            for audit_log in logs
         ],
         "total": total,
         "page": page,

@@ -9,6 +9,7 @@ from app.db.models.user import User, UserRole
 from app.db.session import get_db
 from app.repositories.course_repository import CourseRepository
 from app.repositories.notice_repository import NoticeRepository
+from app.services.course_access_service import unlocked_course_ids
 from app.schemas.notice import NoticeCreate, NoticeResponse, NoticeUpdate
 from app.services.notice_service import NoticeService
 
@@ -28,7 +29,12 @@ async def list_notices(
     enrolled_ids = []
     if current_user.role == UserRole.STUDENT:
         enrollments = await course_repo.list_student_enrollments(current_user.id)
-        enrolled_ids = [e.course_id for e in enrollments if e.status == EnrollmentStatus.ACTIVE]
+        unlocked_ids = await unlocked_course_ids(db, current_user.id)
+        enrolled_ids = [
+            e.course_id
+            for e in enrollments
+            if e.status == EnrollmentStatus.ACTIVE and e.course_id in unlocked_ids
+        ]
 
     notices, _ = await repo.list_notices(
         audience=audience,

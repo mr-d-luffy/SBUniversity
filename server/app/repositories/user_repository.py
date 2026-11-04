@@ -1,9 +1,17 @@
 import uuid
 from typing import List, Optional, Tuple
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from app.db.models.user import Department, StudentProfile, TeacherProfile, User, UserRole, UserStatus
+
+from app.db.models.user import (
+    StudentProfile,
+    TeacherProfile,
+    User,
+    UserRole,
+    UserStatus,
+)
 
 
 class UserRepository:
@@ -102,7 +110,11 @@ class UserRepository:
 
     async def next_student_code(self, year: int) -> str:
         prefix = f"SBU-{year}-"
-        result = await self.db.execute(select(StudentProfile.student_code))
+        result = await self.db.execute(
+            select(StudentProfile.student_code).where(
+                StudentProfile.student_code.like(f"{prefix}%")
+            )
+        )
         numbers = [
             int(code[len(prefix):])
             for code in result.scalars()

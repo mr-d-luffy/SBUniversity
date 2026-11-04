@@ -2,7 +2,14 @@ from datetime import datetime, timezone
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models import Course, Enrollment, EnrollmentStatus
+from app.db.models import (
+    Course,
+    CourseKeyRequest,
+    CourseKeyRequestStatus,
+    CourseUnlock,
+    Enrollment,
+    EnrollmentStatus,
+)
 from app.services.certificate_service import CertificateService
 
 
@@ -16,6 +23,20 @@ async def test_certificate_issuance_and_public_verification(client: AsyncClient,
     await db_session.flush()
 
     db_session.add(Enrollment(student_id=student1_id, course_id=course.id, status=EnrollmentStatus.ACTIVE))
+    key_request = CourseKeyRequest(
+        student_id=student1_id,
+        course_id=course.id,
+        status=CourseKeyRequestStatus.ACTIVATED,
+    )
+    db_session.add(key_request)
+    await db_session.flush()
+    db_session.add(
+        CourseUnlock(
+            student_id=student1_id,
+            course_id=course.id,
+            request_id=key_request.id,
+        )
+    )
     await db_session.commit()
 
     # Manually issue certificate via service

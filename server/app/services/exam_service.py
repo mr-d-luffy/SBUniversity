@@ -21,6 +21,7 @@ from app.db.models.result import Result
 from app.db.models.task import Task, TaskCompletion, TaskStatus, TaskType, TaskVerification
 from app.db.models.user import User, UserRole
 from app.repositories.course_repository import CourseRepository
+from app.services.course_access_service import is_course_unlocked
 from app.repositories.exam_repository import ExamRepository
 from app.repositories.result_repository import ResultRepository
 from app.repositories.task_repository import TaskRepository
@@ -419,7 +420,11 @@ class ExamService:
 
         # Check enrollment
         enrollment = await self.course_repo.get_enrollment(student.id, exam.course_id)
-        if not enrollment or enrollment.status != EnrollmentStatus.ACTIVE:
+        if (
+            not enrollment
+            or enrollment.status != EnrollmentStatus.ACTIVE
+            or not await is_course_unlocked(self.db, student.id, exam.course_id)
+        ):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not enrolled in this course")
 
         # Check if active in-progress attempt already exists
@@ -508,6 +513,8 @@ class ExamService:
         attempt = await self.exam_repo.get_attempt(attempt_id)
         if not attempt or attempt.student_id != student_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attempt not found")
+        if not await is_course_unlocked(self.db, student_id, attempt.exam.course_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attempt not found")
         if attempt.status != AttemptStatus.IN_PROGRESS:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This exam attempt is already submitted")
 
@@ -556,6 +563,8 @@ class ExamService:
         attempt = await self.exam_repo.get_attempt(attempt_id)
         if not attempt or attempt.student_id != student_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attempt not found")
+        if not await is_course_unlocked(self.db, student_id, attempt.exam.course_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attempt not found")
 
         now = datetime.now(timezone.utc)
         if attempt.status != AttemptStatus.IN_PROGRESS or now > ensure_utc(attempt.expires_at):
@@ -567,6 +576,8 @@ class ExamService:
     async def submit_attempt(self, attempt_id: uuid.UUID, student_id: uuid.UUID, is_auto: bool = False) -> SubmitAttemptResponse:
         attempt = await self.exam_repo.get_attempt(attempt_id)
         if not attempt or attempt.student_id != student_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attempt not found")
+        if not await is_course_unlocked(self.db, student_id, attempt.exam.course_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attempt not found")
 
         # Idempotent return if already submitted

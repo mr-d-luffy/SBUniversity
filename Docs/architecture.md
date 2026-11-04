@@ -15,7 +15,7 @@
 | AI | Google Gemini API (`google-genai` SDK) |
 | PDF generation | ReportLab + `qrcode` (backend) |
 | Live classroom | Course-scoped FastAPI whiteboard sync; persisted strokes and short-lived chat |
-| Community Chat | Browser WebCrypto encryption for text/audio; device keys, key envelopes, and 10-hour inactive-conversation cleanup |
+| Community Chat | Help & Support, browser WebCrypto encryption for text/audio; device keys, key envelopes, and 48-hour inactive-conversation cleanup |
 | Mobile | Student-scoped Flutter Android client foundation; not feature-complete or production-ready |
 | Hosting (suggested) | Frontend: Vercel · Backend: Docker on Render/Railway/Fly · Redis: Upstash/Redis Cloud |
 
@@ -269,7 +269,7 @@ server/
 **Community Chat**
 - `/community-chat` provides conversation lists, direct/staff support initiation, device registration, public-key listing, wrapped-key envelope exchange, encrypted text/audio messages, and authenticated audio retrieval.
 - Text and voice payloads are encrypted in the browser with WebCrypto AES-GCM keys. Device identities use RSA-OAEP; the server stores public keys and per-device wrapped-key envelopes, not private keys or plaintext.
-- Device/private and conversation keys persist in IndexedDB with no app TTL. Conversation/message database rows and key envelopes are removed after 10 hours without a new message. The expiry job does not delete separately stored audio objects; their retention must be managed separately.
+- Device/private and conversation keys persist in IndexedDB with no app TTL. Conversation/message database rows and key envelopes are removed after 48 hours without a new message. The expiry job does not delete separately stored audio objects; their retention must be managed separately.
 
 ## 14. Current implementation notes (2026-11-01)
 - Admin course management supports create, edit, permanent delete, multiple assigned teachers, selected student enrollment, and enroll-all-active-students.
@@ -279,7 +279,7 @@ server/
 - Live whiteboard messages expire after ten minutes; stored strokes remain with the session history. Chat polling on the web client is every five seconds; focus/visibility refreshes remain available for more immediate updates.
 - Student dashboard task completion statuses are fetched in one batched query for the selected tasks.
 - The AI orb animation is shared by the assistant page, floating launcher, and floating panel. Its black canvas is screen-blended into the UI; the site favicon is `web/src/app/icon.svg`.
-- Community Chat uses browser WebCrypto and IndexedDB-retained keys without an application TTL; conversation/message database rows and server key envelopes are removed after 10 hours without a new message. Stored audio objects are outside that database cleanup.
+- Community Chat uses browser WebCrypto and IndexedDB-retained keys without an application TTL; conversation/message database rows and server key envelopes are removed after 48 hours without a new message. Stored audio objects are outside that database cleanup.
 
 ## 10. Data Flow Diagrams
 ### Task completion → Task Points → Live Ranking

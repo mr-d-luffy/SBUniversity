@@ -8,7 +8,15 @@ from app.db.models.user import (
     StudentProfile,
     TeacherProfile,
 )
-from app.db.models.course import Course, CourseTeacher, Enrollment, EnrollmentStatus
+from app.db.models.course import (
+    Course,
+    CourseKeyRequest,
+    CourseKeyRequestStatus,
+    CourseTeacher,
+    CourseUnlock,
+    Enrollment,
+    EnrollmentStatus,
+)
 from app.db.models.exam import Exam, ExamStatus, Question, QuestionOption, ExamAttempt, AttemptStatus, AttemptAnswer
 from app.db.models.result import Result
 from app.db.models.certificate import Certificate
@@ -55,7 +63,10 @@ __all__ = [
     "StudentProfile",
     "TeacherProfile",
     "Course",
+    "CourseKeyRequest",
+    "CourseKeyRequestStatus",
     "CourseTeacher",
+    "CourseUnlock",
     "Enrollment",
     "EnrollmentStatus",
     "Exam",

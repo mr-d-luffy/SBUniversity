@@ -6,6 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
     Course,
+    CourseKeyRequest,
+    CourseKeyRequestStatus,
+    CourseUnlock,
     Enrollment,
     EnrollmentStatus,
     Exam,
@@ -129,6 +132,20 @@ async def test_teacher_results_and_exam_details_are_limited_to_assigned_courses(
         ]
     )
     await db_session.flush()
+    key_request = CourseKeyRequest(
+        student_id=student.id,
+        course_id=assigned_course.id,
+        status=CourseKeyRequestStatus.ACTIVATED,
+    )
+    db_session.add(key_request)
+    await db_session.flush()
+    db_session.add(
+        CourseUnlock(
+            student_id=student.id,
+            course_id=assigned_course.id,
+            request_id=key_request.id,
+        )
+    )
     assigned_exam, assigned_result = await create_exam_result(
         db_session, assigned_course, student, "Assigned Exam"
     )
